@@ -52,7 +52,7 @@ current_marketplace_txs_raw = cursor.fetchall()
 if current_marketplace_txs_raw!=[]:
     current_marketplace_txs_raw_df = pd.DataFrame(current_marketplace_txs_raw)
     current_marketplace_txs_raw_df.columns = [description[0] for description in cursor.description]
-    marketplace_txs_df = marketplace_txs_df.loc[~marketplace_txs_df['hash'].isin(current_marketplace_txs_raw_df['tx_hash'])]
+    marketplace_txs_df = marketplace_txs_df.loc[~marketplace_txs_df['hash'].isin(current_marketplace_txs_raw_df['hash'])]
 
 # setup to pull magic txs - pull current magic transactions to filter against
 cursor.execute("SELECT * FROM magic_txs_raw;")
