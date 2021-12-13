@@ -16,6 +16,9 @@ sqlite3.register_adapter(np.int64, lambda val: int(val))
 sqlite3.register_adapter(np.int32, lambda val: int(val))
 tz = pytz.timezone('UTC')
 
+DAO_WALLET = '0xdb6ab450178babcf0e467c1f3b436050d907e233'
+DAO_ROYALTY_PCT = 0.05
+
 # read in important contract addresses, marketplace method IDs, and treausre IDs
 contract_address = os.path.join("constants", "contract_addresses_reverse.json")
 method_id_address = os.path.join("constants", "marketplace_method_ids.json")
@@ -86,19 +89,24 @@ mkt_magic_merged_table = mkt_magic_merged_table.groupby('hash',as_index=False).a
 mkt_magic_merged_table.columns = mkt_magic_merged_table.columns.droplevel()
 mkt_magic_merged_table.rename(columns={'':'hash','min':'dao_amt_received_magic', 'max':'seller_amt_received_magic', 'sum':'sale_amt_magic'}, inplace=True)
 # for sales where we only have one of the txs, assume it is the seller amount received
+# TODO: make this more intelligent by using the actual dao wallet address
 mkt_magic_merged_table.loc[mkt_magic_merged_table['dao_amt_received_magic']==mkt_magic_merged_table['seller_amt_received_magic'], 'sale_amt_magic'] = \
     mkt_magic_merged_table.loc[mkt_magic_merged_table['dao_amt_received_magic']==mkt_magic_merged_table['seller_amt_received_magic'], 'seller_amt_received_magic'] / 0.95
 mkt_magic_merged_table.loc[mkt_magic_merged_table['dao_amt_received_magic']==mkt_magic_merged_table['seller_amt_received_magic'], 'dao_amt_received_magic'] = \
     mkt_magic_merged_table.loc[mkt_magic_merged_table['dao_amt_received_magic']==mkt_magic_merged_table['seller_amt_received_magic'], 'sale_amt_magic'] * 0.05
 
 raw_marketplace_tx_table = raw_marketplace_tx_table.merge(mkt_magic_merged_table, how='inner', on='hash')
+raw_marketplace_tx_table.drop('to_wallet', axis=1, inplace=True)
+to_wallets = raw_magic_tx_table.loc[raw_magic_tx_table['to_wallet']!=DAO_WALLET,['hash','to_wallet']].drop_duplicates('hash')
+raw_marketplace_tx_table = raw_marketplace_tx_table.merge(to_wallets, how='inner', on='hash')
+
 
 # load into the table
 columns_to_load = [
     'hash',
     'timestamp',
-    'from_wallet',
     'to_wallet',
+    'from_wallet',
     'sale_amt_magic',
     'seller_amt_received_magic',
     'dao_amt_received_magic',

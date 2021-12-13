@@ -22,8 +22,6 @@ marketplace_sales.columns = [description[0] for description in cursor.descriptio
 
 # column manipulations as necessary
 marketplace_sales['timestamp'] = pd.to_datetime(marketplace_sales['timestamp'])
-marketplace_sales['timestamp'] = marketplace_sales['timestamp'].dt.tz_localize(tz='UTC')
-marketplace_sales['timestamp'] = marketplace_sales['timestamp'].dt.tz_convert(tz='US/Eastern')
 marketplace_sales['date'] = marketplace_sales['timestamp'].dt.date
 
 ## build charts
@@ -83,6 +81,10 @@ plt.show()
 
 # average sale price by collection
 med_sales_by_collection = marketplace_sales.groupby(['date', 'nft_collection'], as_index=False).agg({'sale_amt_magic':'median'})
+
+med_sales_by_collection.loc[med_sales_by_collection.nft_collection=='life']
+marketplace_sales.loc[(marketplace_sales.date==dt.date(2021,12,13)) & (marketplace_sales.nft_collection=='life'),['date','sale_amt_magic']]
+
 
 g = sns.lineplot(
     data=med_sales_by_collection.loc[med_sales_by_collection.nft_collection!='extra_life'],
