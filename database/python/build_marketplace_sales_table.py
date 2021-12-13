@@ -5,6 +5,7 @@
 import datetime as dt
 import json
 import os
+import pytz
 import sqlite3
 import re
 
@@ -13,6 +14,7 @@ import pandas as pd
 
 sqlite3.register_adapter(np.int64, lambda val: int(val))
 sqlite3.register_adapter(np.int32, lambda val: int(val))
+tz = pytz.timezone('UTC')
 
 # read in important contract addresses, marketplace method IDs, and treausre IDs
 contract_address = os.path.join("constants", "contract_addresses_reverse.json")
@@ -66,7 +68,7 @@ raw_marketplace_tx_table["tx_type"] = [x[:10] for x in raw_marketplace_tx_table[
 raw_marketplace_tx_table["tx_type"] = raw_marketplace_tx_table["tx_type"].map(method_ids)
 raw_marketplace_tx_table = raw_marketplace_tx_table.loc[raw_marketplace_tx_table["tx_type"]=="buyItem"]
 
-raw_marketplace_tx_table['timestamp'] = [dt.datetime.fromtimestamp(int(x)) for x in raw_marketplace_tx_table['timeStamp']]
+raw_marketplace_tx_table['timestamp'] = [dt.datetime.fromtimestamp(int(x), tz) for x in raw_marketplace_tx_table['timeStamp']]
 raw_marketplace_tx_table['timestamp'] = raw_marketplace_tx_table['timestamp'].astype(str)
 raw_marketplace_tx_table['gas_fee_eth'] = raw_marketplace_tx_table['gasPrice'] * 1e-9 * raw_marketplace_tx_table['gasUsed'] * 1e-9 
 raw_marketplace_tx_table['nft_collection'] = [contract_addresses_lower[x[33:74]] for x in raw_marketplace_tx_table['input']]
