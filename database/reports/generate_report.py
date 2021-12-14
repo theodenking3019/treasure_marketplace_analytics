@@ -80,16 +80,13 @@ g.set_yticklabels(ylabels)
 plt.show()
 
 # average sale price by collection
-med_sales_by_collection = marketplace_sales.groupby(['date', 'nft_collection'], as_index=False).agg({'sale_amt_magic':'median'})
-
-med_sales_by_collection.loc[med_sales_by_collection.nft_collection=='life']
-marketplace_sales.loc[(marketplace_sales.date==dt.date(2021,12,13)) & (marketplace_sales.nft_collection=='life'),['date','sale_amt_magic']]
-
+marketplace_sales['sale_amt_magic_adj'] = marketplace_sales['sale_amt_magic'] / marketplace_sales['quantity'] # temporary 'fix'
+med_sales_by_collection = marketplace_sales.groupby(['date', 'nft_collection'], as_index=False).agg({'sale_amt_magic_adj':'median'})
 
 g = sns.lineplot(
     data=med_sales_by_collection.loc[med_sales_by_collection.nft_collection!='extra_life'],
     x='date',
-    y='sale_amt_magic',
+    y='sale_amt_magic_adj',
     hue='nft_collection',
 )
 plt.title("Median Sale Price by NFT Collection")
@@ -101,12 +98,12 @@ ylabels = ['{:,.0f}'.format(y) + 'K' for y in g.get_yticks()/1000]
 plt.show()
 
 # average sale price by legion and treasures
-med_sales_by_nft_legions = marketplace_sales.loc[marketplace_sales['nft_collection']=='legions_genesis'].groupby(['date', 'nft_subcategory'], as_index=False).agg({'sale_amt_magic':'median'})
+med_sales_by_nft_legions = marketplace_sales.loc[marketplace_sales['nft_collection']=='legions_genesis'].groupby(['date', 'nft_subcategory'], as_index=False).agg({'sale_amt_magic_adj':'median', 'sale_amt_magic':'sum', 'quantity':'sum'})
 
 g = sns.lineplot(
     data=med_sales_by_nft_legions,
     x='date',
-    y='sale_amt_magic',
+    y='sale_amt_magic_adj',
     hue='nft_subcategory',
 )
 plt.title("Median Sale Price by NFT")
@@ -116,6 +113,47 @@ plt.ylabel('Median Sale Price in $MAGIC')
 # ylabels = ['{:,.0f}'.format(y) + 'K' for y in g.get_yticks()/1000]
 plt.xticks(rotation = 45)
 plt.show()
+
+ax = sns.histplot(
+    med_sales_by_nft_legions,
+    x='date',
+    weights='quantity',
+    hue='nft_subcategory',
+    multiple='stack',
+    edgecolor='white',
+    shrink=0.8
+)
+plt.title("# of Sales on Treasure Marketplace per Day - Legions Genesis")
+plt.xlabel('Date')
+plt.ylabel('# of NFT Sales')
+plt.xticks(rotation = 45)
+plt.show()
+
+g = sns.histplot(
+    med_sales_by_nft_legions,
+    x='date',
+    weights='sale_amt_magic',
+    hue='nft_subcategory',
+    multiple='stack',
+    edgecolor='white',
+    shrink=0.8
+)
+plt.title("Sales in $MAGIC on Treasure Marketplace per Day - Legions Genesis")
+plt.xlabel('Date')
+plt.ylabel('Sales in $MAGIC')
+plt.xticks(rotation = 45)
+ylabels = ['{:,.0f}'.format(y) + 'K' for y in g.get_yticks()/1000]
+g.set_yticklabels(ylabels)
+plt.show()
+
+
+
+
+
+
+
+
+
 
 
 treasures_df = marketplace_sales.loc[marketplace_sales['nft_collection']=='treasures']
