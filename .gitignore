@@ -133,3 +133,4 @@ api_key.txt
 functions_old.py
 .venv
 .scratchpad
+mysql_credential.json
