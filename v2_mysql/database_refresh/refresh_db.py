@@ -207,4 +207,3 @@ def refresh_database(sql_credentials):
 def lambda_handler(event, context):
     refresh_database(mysql_credentials)
 
-# refresh_database(mysql_credentials)

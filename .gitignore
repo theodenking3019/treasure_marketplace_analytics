@@ -132,7 +132,12 @@ dmypy.json
 api_key.txt
 functions_old.py
 .venv
+.lambda_venv
 .scratchpad
 mysql_credential.json
 aws_secret.json
 test_write_to_s3.py
+payload.zip
+lambda_requirements.txt
+lambda_payload
+zip_lambda_packages.sh
