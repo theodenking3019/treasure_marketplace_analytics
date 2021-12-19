@@ -26,7 +26,7 @@ marketplace_sales.rename(columns={'timestamp':'datetime'}, inplace=True)
 sqlite_cursor.close()
 
 # read in important contract addresses and marketplace method IDs
-credential = os.path.join("constants", "mysql_credential.json")
+credential = os.path.join("database_refresh", "constants", "mysql_credential.json")
 with open(credential) as f:
     mysql_credentials = json.loads(f.read())
 
@@ -59,4 +59,3 @@ marketplace_sales.to_sql(
     )
 
 engine.dispose()
-

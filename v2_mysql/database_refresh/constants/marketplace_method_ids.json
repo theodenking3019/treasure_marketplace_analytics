@@ -1,0 +1,6 @@
+{
+    "0xde250604": "buyItem",
+    "0x6fad0409": "updateListing",
+    "0x9057f289": "createListing",
+    "0xb2ddee06" : "cancelListing"
+}
