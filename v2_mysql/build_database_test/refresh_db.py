@@ -174,7 +174,7 @@ def refresh_database(sql_credentials):
         user=sql_credentials['username'], 
         pw=sql_credentials['pw'], 
         host=sql_credentials['host'], 
-        db="treasure"
+        db="treasure_test"
         )
     )
     connection = engine.connect()
