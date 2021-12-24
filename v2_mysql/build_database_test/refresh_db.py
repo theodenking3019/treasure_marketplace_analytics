@@ -12,14 +12,15 @@ import os
 
 import boto3
 import pandas as pd
+import pymysql
 from sqlalchemy import create_engine
 from ratelimit import limits, sleep_and_retry
 
-os.chdir('v2_mysql/database_refresh')
-
 ONE_SECOND = 1
 DAO_WALLET = '0xdb6ab450178babcf0e467c1f3b436050d907e233'
+os.chdir('v2_mysql/build_database_test')
 DAO_ROYALTY_PCT = 0.05
+
 tz = pytz.timezone('UTC')
 
 # read in credentials
@@ -64,7 +65,7 @@ latest_txs = latest_mkt_txs.hash
 
 # define functions needed for final script
 @sleep_and_retry
-@limits(calls=3, period=ONE_SECOND)
+@limits(calls=2, period=ONE_SECOND)
 def get_contract_transactions(arbiscan_api_key, contract_address, start_block=0, from_address=None, tx_type="txlist"):
 
     request_url = "https://api.arbiscan.io/api"
@@ -89,6 +90,9 @@ def pull_arbiscan_data(arbiscan_api_key, method_ids, start_block=0, latest_tx_ha
     # filter txs against already existing records
     marketplace_txs_df = marketplace_txs_df.loc[~marketplace_txs_df['hash'].isin(latest_tx_hashes)]
 
+    # keep only successful txs
+    marketplace_txs_df = marketplace_txs_df.loc[marketplace_txs_df.txreceipt_status=='1'].copy()
+
     # setup to pull magic txs - filter marketplace txs down to buys
     marketplace_txs_df["tx_type"] = [x[:10] for x in marketplace_txs_df["input"]]
     marketplace_txs_df["tx_type"] = marketplace_txs_df["tx_type"].map(method_ids)
@@ -97,12 +101,9 @@ def pull_arbiscan_data(arbiscan_api_key, method_ids, start_block=0, latest_tx_ha
 
     # pull magic txs
     new_magic_txs = []
-    for tx_wallet in marketplace_buys_df["from"].unique():
+    for i, tx_wallet in enumerate(marketplace_buys_df["from"].unique()):
         magic_txs = get_contract_transactions(arbiscan_api_key, contract_addresses['magic'], start_block=start_block, from_address=tx_wallet, tx_type="tokentx")
-        try:
-            magic_txs_df = pd.DataFrame.from_dict(magic_txs["result"])
-        except:
-            print(magic_txs["result"])
+        magic_txs_df = pd.DataFrame.from_dict(magic_txs["result"])
         magic_txs_df = magic_txs_df.loc[~magic_txs_df['hash'].isin(latest_mkt_txs)]
         new_magic_txs.append(magic_txs_df)
     new_magic_txs_df = pd.concat(new_magic_txs)
@@ -174,7 +175,7 @@ def refresh_database(sql_credentials):
         user=sql_credentials['username'], 
         pw=sql_credentials['pw'], 
         host=sql_credentials['host'], 
-        db="treasure_test"
+        db="treasure"
         )
     )
     connection = engine.connect()
@@ -186,12 +187,12 @@ def refresh_database(sql_credentials):
     date = dt.datetime.now()
     marketplace_txs_filename = f'marketplace-txs/marketplace_txs_raw_{date.year}_{date.month}_{date.day}_{date.hour}_{date.minute}.csv'
     magic_txs_filename = f'magic-txs/magic_txs_raw_{date.year}_{date.month}_{date.day}_{date.hour}_{date.minute}.csv'
-    marketplace_df.to_csv('tmp_marketplace_txs_df.csv')
-    magic_df.to_csv('tmp_magic_txs_df.csv')
-    s3_resource.Object('treasure-marketplace-db', marketplace_txs_filename).upload_file('tmp_marketplace_txs_df.csv')
-    s3_resource.Object('treasure-marketplace-db', magic_txs_filename).upload_file('tmp_magic_txs_df.csv')
-    os.remove('tmp_marketplace_txs_df.csv')
-    os.remove('tmp_magic_txs_df.csv')
+    marketplace_df.to_csv('/tmp/tmp_marketplace_txs_df.csv')
+    magic_df.to_csv('/tmp/tmp_magic_txs_df.csv')
+    s3_resource.Object('treasure-marketplace-db', marketplace_txs_filename).upload_file('/tmp/tmp_marketplace_txs_df.csv')
+    s3_resource.Object('treasure-marketplace-db', magic_txs_filename).upload_file('/tmp/tmp_magic_txs_df.csv')
+    os.remove('/tmp/tmp_marketplace_txs_df.csv')
+    os.remove('/tmp/tmp_magic_txs_df.csv')
 
     # write data to sql
     marketplace_sales_df.to_sql(
@@ -204,6 +205,5 @@ def refresh_database(sql_credentials):
 
     engine.dispose()
 
-def lambda_handler(event, context):
-    refresh_database(mysql_credentials)
-
+refresh_database(mysql_credentials)
+# pull_arbiscan_data(arbiscan_api_key, method_ids, latest_block, latest_txs)

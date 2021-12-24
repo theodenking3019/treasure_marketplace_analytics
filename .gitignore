@@ -145,3 +145,4 @@ historic_magic_prices.json
 historic_eth_prices.json
 populate_magic_price_table.py
 *.zip
+fix_incorrect_wallet_buyers_20211221.py
