@@ -82,7 +82,7 @@ def process_raw_marketplace_txs(marketplace_txs_raw):
     marketplace_txs_raw["tx_type"] = marketplace_txs_raw["tx_type"].map(method_ids)
     marketplace_txs_raw = marketplace_txs_raw.loc[~pd.isnull(marketplace_txs_raw["tx_type"])] # null transactions are all whitelisting of certain accounts before marketplace launch
     marketplace_txs_raw['timestamp'] = [dt.datetime.fromtimestamp(int(x), tz) for x in marketplace_txs_raw['timeStamp']]
-    marketplace_txs_raw['gas_fee_eth'] = marketplace_txs_raw['gasPrice'].astype('int64') * 1e-9 * marketplace_txs_raw['gasUsed'].astype(int) * 1e-9 
+    marketplace_txs_raw['gas_fee_eth'] = (marketplace_txs_raw['gasPrice'].astype('int64') * 1e-9 * marketplace_txs_raw['gasUsed'].astype(int) * 1e-9) / 2
     marketplace_txs_raw['nft_collection'] = [contract_addresses_reverse_lower[x[33:74]] for x in marketplace_txs_raw['input']] # works for both types of txs
     marketplace_txs_raw['nft_id'] = [int(x[133:138], 16) for x in marketplace_txs_raw['input']] # also works for all types of txs
 
@@ -246,7 +246,7 @@ engine = create_engine(
     user=mysql_credentials['username'], 
     pw=mysql_credentials['pw'], 
     host=mysql_credentials['host'], 
-    db="treasure_test"
+    db="treasure"
     )
 )
 connection = engine.connect()
@@ -261,15 +261,6 @@ listings.to_sql(
 
 connection.close()
 engine.dispose()
-
-# marketplace_sales_list = []
-# marketplace_sales_query = connection.execute('SELECT * FROM treasure.marketplace_sales')
-# for row in marketplace_sales_query:
-#     marketplace_sales_list.append(row)
-# marketplace_sales = pd.DataFrame(marketplace_sales_list)
-# marketplace_sales.columns=list(marketplace_sales_query.keys())
-# connection.close()
-# engine.dispose()
 
 ## NOTES ON BUGS FIXED:
 ###########################
@@ -300,3 +291,8 @@ engine.dispose()
 # sometimes updates and other txs are duplicated for real. 
 # See 0xd12546fc116f1a987a0b3a7293542dcb190de7c4791e46144edcd9084c477977 and
 # 0xb0569348c43dc519f934be41ee5236c63e04b402e9a8b658fc7b137c8ffe281c
+
+# Finally, there are some cases where expires_at is less than updated_at, sold_at, or
+# cancelled_at. It seems that this is related to a bug in the marketplace preventing the 
+# expiry function from working properly. If this is the case we may consider nullifying
+# expiry date until that is fixed. To be updated.

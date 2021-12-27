@@ -11,8 +11,8 @@ import requests
 import os
 
 import boto3
+import numpy as np
 import pandas as pd
-import pymysql
 from sqlalchemy import create_engine
 from ratelimit import limits, sleep_and_retry
 
@@ -111,26 +111,56 @@ def pull_arbiscan_data(arbiscan_api_key, method_ids, start_block=0, latest_tx_ha
 
     return marketplace_txs_df, new_magic_txs_df
 
-def build_marketplace_tx_table(raw_marketplace_tx_table, raw_magic_tx_table, contract_addresses, method_ids):
-    raw_marketplace_tx_table["tx_type"] = [x[:10] for x in raw_marketplace_tx_table["input"]]
-    raw_marketplace_tx_table["tx_type"] = raw_marketplace_tx_table["tx_type"].map(method_ids)
-    raw_marketplace_tx_table = raw_marketplace_tx_table.loc[raw_marketplace_tx_table["tx_type"]=="buyItem"]
+def process_marketplace_txs(marketplace_txs_raw, method_ids, contract_addresses, treasure_ids_numeric):
+    marketplace_txs_raw["tx_type"] = [x[:10] for x in marketplace_txs_raw["input"]]
+    marketplace_txs_raw["tx_type"] = marketplace_txs_raw["tx_type"].map(method_ids)
+    marketplace_txs_raw = marketplace_txs_raw.loc[~pd.isnull(marketplace_txs_raw["tx_type"])] # null transactions are all whitelisting of certain accounts before marketplace launch
+    marketplace_txs_raw['datetime'] = [dt.datetime.fromtimestamp(int(x), tz) for x in marketplace_txs_raw['timeStamp']]
+    marketplace_txs_raw['gas_fee_eth'] = marketplace_txs_raw['gasPrice'].astype('int64') * 1e-9 * marketplace_txs_raw['gasUsed'].astype(int) * 1e-9 
+    marketplace_txs_raw['nft_collection'] = [contract_addresses[x[33:74]] for x in marketplace_txs_raw['input']] # works for both types of txs
+    marketplace_txs_raw['nft_id'] = [int(x[133:138], 16) for x in marketplace_txs_raw['input']] # also works for all types of txs
+    marketplace_txs_raw.loc[marketplace_txs_raw['nft_collection'].isin(['treasures', 'legions', 'legions_genesis']), 'nft_name'] = \
+        marketplace_txs_raw.loc[marketplace_txs_raw['nft_collection'].isin(['treasures', 'legions', 'legions_genesis']), 'nft_id'].map(treasure_ids_numeric)
+    marketplace_txs_raw.loc[~pd.isnull(marketplace_txs_raw['nft_name']),'nft_subcategory'] = \
+        [re.sub(r'[0-9]+', '', x).rstrip() for x in marketplace_txs_raw.loc[~pd.isnull(marketplace_txs_raw['nft_name']),'nft_name']]
 
-    raw_marketplace_tx_table['timestamp'] = [dt.datetime.fromtimestamp(int(x), tz) for x in raw_marketplace_tx_table['timeStamp']]
-    raw_marketplace_tx_table['timestamp'] = raw_marketplace_tx_table['timestamp'].astype(str)
-    raw_marketplace_tx_table['gas_fee_eth'] = raw_marketplace_tx_table['gasPrice'].astype('int64') * 1e-9 * raw_marketplace_tx_table['gasUsed'].astype(int) * 1e-9 
-    raw_marketplace_tx_table['nft_collection'] = [contract_addresses[x[33:74]] for x in raw_marketplace_tx_table['input']]
-    raw_marketplace_tx_table['nft_id'] = [int(x[133:138], 16) for x in raw_marketplace_tx_table['input']]
-    raw_marketplace_tx_table.loc[raw_marketplace_tx_table['nft_collection'].isin(['treasures', 'legions', 'legions_genesis']), 'nft_name'] = \
-        raw_marketplace_tx_table.loc[raw_marketplace_tx_table['nft_collection'].isin(['treasures', 'legions', 'legions_genesis']), 'nft_id'].map(treasure_ids_numeric)
-    raw_marketplace_tx_table.loc[~pd.isnull(raw_marketplace_tx_table['nft_name']),'nft_subcategory'] = \
-        [re.sub(r'[0-9]+', '', x).rstrip() for x in raw_marketplace_tx_table.loc[~pd.isnull(raw_marketplace_tx_table['nft_name']),'nft_name']]
-    raw_marketplace_tx_table['quantity'] = [int(x[262:266], 16) for x in raw_marketplace_tx_table['input']]
+    marketplace_txs_raw['quantity'] = np.nan
+    marketplace_txs_raw['listing_price_magic'] = np.nan
+    marketplace_txs_raw['expiration_datetime'] = np.nan
+    marketplace_txs_raw.loc[marketplace_txs_raw['tx_type'].isin(['createListing','updateListing']), 'quantity'] = [int(x[198:202], 16) for x in marketplace_txs_raw.loc[marketplace_txs_raw['tx_type'].isin(['createListing','updateListing']), 'input']]
+    marketplace_txs_raw.loc[marketplace_txs_raw['tx_type']=='buyItem', 'quantity'] = [int(x[262:266], 16) for x in marketplace_txs_raw.loc[marketplace_txs_raw['tx_type']=='buyItem', 'input']]
+    marketplace_txs_raw.loc[marketplace_txs_raw['tx_type'].isin(['createListing','updateListing']), 'listing_price_magic'] = [int(x[240:266], 16) for x in marketplace_txs_raw.loc[marketplace_txs_raw['tx_type'].isin(['createListing','updateListing']), 'input']]
+    marketplace_txs_raw.loc[marketplace_txs_raw['tx_type'].isin(['createListing','updateListing']), 'expiration_datetime'] = [int(x[310:330], 16) for x in marketplace_txs_raw.loc[marketplace_txs_raw['tx_type'].isin(['createListing','updateListing']), 'input']]
+    marketplace_txs_raw.loc[marketplace_txs_raw['tx_type'].isin(['createListing','updateListing']), 'listing_price_magic'] = marketplace_txs_raw.loc[marketplace_txs_raw['tx_type'].isin(['createListing','updateListing']), 'listing_price_magic'].astype("float64") * 1e-18
+    marketplace_txs_raw.loc[marketplace_txs_raw['tx_type'].isin(['createListing','updateListing']), 'expiration_datetime'] = [dt.datetime.fromtimestamp(int(x)/1000, tz) for x in marketplace_txs_raw.loc[marketplace_txs_raw['tx_type'].isin(['createListing','updateListing']), 'expiration_datetime']]
+
+    # correct data error: coalesce from + from_wallet, to + to_wallet
+    columns_to_keep = [
+        'hash',
+        'datetime',
+        'blockNumber',
+        'from',
+        'to',
+        'listing_price_magic',
+        'expiration_datetime',
+        'gas_fee_eth',
+        'nft_collection',
+        'nft_id',
+        'nft_name',
+        'nft_subcategory',
+        'quantity',
+        'tx_type'
+    ]
+
+    return marketplace_txs_raw.loc[:,columns_to_keep].copy()
+
+def build_marketplace_sales_table(marketplace_txs, magic_txs):
+    marketplace_sales = marketplace_txs.loc[marketplace_txs["tx_type"]=="buyItem"].copy()
 
     # join magic txs table to get transaction values
-    raw_magic_tx_table['value'] = raw_magic_tx_table['value'].astype("float64") * 1e-18
-    mkt_magic_merged_table = raw_magic_tx_table.merge(raw_marketplace_tx_table, how='inner', on='hash')
-    mkt_magic_merged_table = mkt_magic_merged_table.groupby('hash',as_index=False).agg({'value_x':["min", "max", "sum"]})
+    magic_txs['value'] = magic_txs['value'].astype("float64") * 1e-18
+    mkt_magic_merged_table = magic_txs.merge(marketplace_sales, how='inner', on='hash')
+    mkt_magic_merged_table = mkt_magic_merged_table.groupby('hash',as_index=False).agg({'value':["min", "max", "sum"]})
     mkt_magic_merged_table.columns = mkt_magic_merged_table.columns.droplevel()
     mkt_magic_merged_table.rename(columns={'':'hash','min':'dao_amt_received_magic', 'max':'seller_amt_received_magic', 'sum':'sale_amt_magic'}, inplace=True)
     # for sales where we only have one of the txs, assume it is the seller amount received
@@ -140,13 +170,12 @@ def build_marketplace_tx_table(raw_marketplace_tx_table, raw_magic_tx_table, con
     mkt_magic_merged_table.loc[mkt_magic_merged_table['dao_amt_received_magic']==mkt_magic_merged_table['seller_amt_received_magic'], 'dao_amt_received_magic'] = \
         mkt_magic_merged_table.loc[mkt_magic_merged_table['dao_amt_received_magic']==mkt_magic_merged_table['seller_amt_received_magic'], 'sale_amt_magic'] * 0.05
 
-    raw_marketplace_tx_table = raw_marketplace_tx_table.merge(mkt_magic_merged_table, how='inner', on='hash')
-    raw_marketplace_tx_table.drop('to', axis=1, inplace=True)
-    to_wallets = raw_magic_tx_table.loc[raw_magic_tx_table['to']!=DAO_WALLET,['hash','to']].drop_duplicates('hash')
-    raw_marketplace_tx_table = raw_marketplace_tx_table.merge(to_wallets, how='inner', on='hash')
-    raw_marketplace_tx_table.rename(columns={
+    marketplace_sales = marketplace_sales.merge(mkt_magic_merged_table, how='inner', on='hash')
+    marketplace_sales.drop('to', axis=1, inplace=True)
+    to_wallets = magic_txs.loc[magic_txs['to']!=DAO_WALLET,['hash','to']].drop_duplicates('hash')
+    marketplace_sales = marketplace_sales.merge(to_wallets, how='inner', on='hash')
+    marketplace_sales.rename(columns={
         'hash':'tx_hash',
-        'timestamp':'datetime',
         'to':'wallet_seller',
         'from':'wallet_buyer'
         },inplace=True)
@@ -167,7 +196,107 @@ def build_marketplace_tx_table(raw_marketplace_tx_table, raw_magic_tx_table, con
         'nft_subcategory',
         'quantity'
     ]
-    return raw_marketplace_tx_table.loc[:, columns_to_load]
+    return marketplace_sales.loc[:, columns_to_load]
+
+def build_marketplace_listings_table(marketplace_txs, marketplace_sales):
+    # create listings table
+    listings_og = marketplace_txs.loc[marketplace_txs['tx_type'].isin(['createListing','updateListing'])].copy()
+    listings=listings_og.copy()
+
+    # join updates
+    listings_merge_keys = [
+        'from',
+        'nft_collection',
+        'nft_id'
+    ]
+    updates = listings.loc[listings['tx_type']=='updateListing',['hash','datetime','blockNumber'] + listings_merge_keys].copy()
+    updates.rename(columns={
+        'hash':'update_tx_hash',
+        'datetime':'updated_at',
+        'blockNumber':'update_blockNumber'
+    }, inplace=True)
+    listings_updates = listings.merge(updates, how='left', on=listings_merge_keys)
+    listings_updates = listings_updates.loc[listings_updates['blockNumber']<listings_updates['update_blockNumber']]
+    most_recent_updates = listings_updates.groupby('hash',as_index=False).agg({'update_blockNumber':'min'})
+    listings_updates = listings_updates.merge(most_recent_updates, how='inner',on=['hash','update_blockNumber']) 
+    dupe_cols_to_drop = list(listings_updates.columns)
+    dupe_cols_to_drop.remove('update_tx_hash')
+    listings_updates.drop_duplicates(dupe_cols_to_drop,inplace=True)
+    listings = listings.merge(listings_updates, how='left', on=list(listings_og.columns))
+
+    # Cancellations
+    cancellations = marketplace_txs.loc[marketplace_txs['tx_type'].isin(['cancelListing'])].copy()
+    cancellations = cancellations.loc[:,['hash','datetime','blockNumber'] + listings_merge_keys].copy()
+    cancellations.rename(columns={
+        'hash':'cancellation_tx_hash',
+        'datetime':'cancelled_at',
+        'blockNumber':'cancellation_blockNumber'
+    }, inplace=True)
+    listings_cancellations = listings_og.merge(cancellations, how='left', on=listings_merge_keys)
+    listings_cancellations = listings_cancellations.loc[listings_cancellations['blockNumber']<=listings_cancellations['cancellation_blockNumber']] # less than or equal to to account for times when the tx is updated then immediately cancelled
+    most_recent_cancellation = listings_cancellations.groupby('hash',as_index=False).agg({'cancellation_blockNumber':'min'})
+    listings_cancellations = listings_cancellations.merge(most_recent_cancellation, how='inner',on=['hash','cancellation_blockNumber']) 
+    listings = listings.merge(listings_cancellations, how='left', on=list(listings_og.columns))
+    # handle cases where there is both an update and a cancellation
+    listings.loc[listings.cancellation_blockNumber >= listings.update_blockNumber, ['cancellation_tx_hash', 'cancelled_at']] = np.nan
+    listings.loc[listings.cancellation_blockNumber < listings.update_blockNumber, ['update_tx_hash', 'updated_at']] = np.nan
+
+    # Sales
+    sales_table_merge_keys = [
+        'wallet_seller',
+        'nft_collection',
+        'nft_id'
+    ]
+    sales = marketplace_sales.merge(marketplace_txs.loc[:,['hash','blockNumber']], how='inner', left_on='tx_hash', right_on='hash')
+    sales = sales.loc[:,['tx_hash','datetime','blockNumber','quantity'] + sales_table_merge_keys].copy()
+    sales.rename(columns={
+        'tx_hash':'final_sale_tx_hash',
+        'datetime':'sold_at',
+        'blockNumber':'sale_blockNumber',
+        'quantity':'quantity_sold'
+    }, inplace=True)
+    listings_sales = listings_og.merge(sales, how='left', left_on=listings_merge_keys, right_on=sales_table_merge_keys)
+    listings_sales = listings_sales.loc[listings_sales['blockNumber']<=listings_sales['sale_blockNumber']]
+    listings_sales.sort_values(['hash','sold_at'],inplace=True)
+    listings_sales['cum_quantity_sold'] = listings_sales.groupby('hash').quantity_sold.cumsum()
+    listings_sales = listings_sales.loc[listings_sales['quantity']==listings_sales['cum_quantity_sold']]
+    listings = listings.merge(listings_sales, how='left', on=list(listings_og.columns))
+    # handle cases where there is any two of an update, a cancellation, or a listing
+    listings.loc[listings.cancellation_blockNumber > listings.sale_blockNumber, ['cancellation_tx_hash', 'cancelled_at']] = np.nan
+    listings.loc[listings.cancellation_blockNumber < listings.sale_blockNumber, ['final_sale_tx_hash','sold_at','quantity_sold']] = np.nan
+    listings.loc[listings.update_blockNumber > listings.sale_blockNumber, ['update_tx_hash', 'updated_at']] = np.nan
+    listings.loc[listings.update_blockNumber <= listings.sale_blockNumber, ['final_sale_tx_hash','sold_at','quantity_sold']] = np.nan
+
+    listings.drop('wallet_seller',axis=1,inplace=True)
+    listings.rename(columns={
+        'hash':'tx_hash',
+        'datetime':'listed_at',
+        'expiration_datetime':'expires_at',
+        'from':'wallet_seller'
+    }, inplace=True)
+    listings['listing_price_magic'] = listings['listing_price_magic'].apply(lambda x: round(x,2))
+
+    cols_to_load = [
+        'tx_hash',
+        'listed_at',
+        'wallet_seller',
+        'listing_price_magic',
+        'gas_fee_eth',
+        'nft_collection',
+        'nft_id',
+        'nft_name',
+        'nft_subcategory',
+        'quantity',
+        'update_tx_hash',
+        'cancellation_tx_hash',
+        'final_sale_tx_hash',
+        'updated_at',
+        'cancelled_at',
+        'sold_at',
+        'expires_at'
+    ]
+
+    return listings.loc[:,cols_to_load].copy()
 
 def refresh_database(sql_credentials):
     engine = create_engine(
@@ -181,7 +310,9 @@ def refresh_database(sql_credentials):
     connection = engine.connect()
 
     marketplace_df, magic_df = pull_arbiscan_data(arbiscan_api_key, method_ids, latest_block, latest_txs)
-    marketplace_sales_df = build_marketplace_tx_table(marketplace_df, magic_df, contract_addresses_reverse_lower, method_ids)
+    marketplace_df_processed = process_marketplace_txs(marketplace_df, method_ids, contract_addresses_reverse_lower, treasure_ids_numeric)
+    marketplace_sales_df = build_marketplace_sales_table(marketplace_df_processed, magic_df)
+    marketplace_listings_df = build_marketplace_listings_table(marketplace_df_processed, marketplace_sales_df)
 
     # write data to s3
     date = dt.datetime.now()
@@ -202,8 +333,15 @@ def refresh_database(sql_credentials):
         chunksize = 1000,
         index=False
         )
+    marketplace_listings_df.to_sql(
+        'marketplace_listings', 
+        con = connection, 
+        if_exists = 'append', 
+        chunksize = 1000,
+        index=False
+        )
 
+    connection.close()
     engine.dispose()
 
 refresh_database(mysql_credentials)
-# pull_arbiscan_data(arbiscan_api_key, method_ids, latest_block, latest_txs)

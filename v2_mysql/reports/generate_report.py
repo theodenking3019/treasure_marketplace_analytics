@@ -9,12 +9,12 @@ import pymysql
 import seaborn as sns
 import json
 
-os.chdir('v2_mysql')
+os.chdir('v2_mysql/build_database_test')
 
 sns.set_style('whitegrid')
 sns.despine()
 
-sql_credential = os.path.join("database_refresh", "constants", "mysql_credential.json")
+sql_credential = os.path.join("constants", "mysql_credential.json")
 with open(sql_credential) as f:
     mysql_credentials = json.loads(f.read())
 
