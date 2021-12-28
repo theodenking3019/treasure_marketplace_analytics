@@ -9,33 +9,29 @@ CREATE OR REPLACE VIEW agg_daily_vol_by_collection (
     avg_sale_amt_usd,
     avg_sale_amt_eth
 )
-AS 
-WITH staging_1 AS (
-	SELECT 
-		a.tx_hash,
-        b.datetime
-	FROM marketplace_sales a 
-	LEFT JOIN token_prices b ON a.datetime <= b.datetime
-),
-staging_2 AS (
-	SELECT 
-		tx_hash, 
-        MIN(datetime) AS closest_price_time
-	FROM staging_1 
-    GROUP BY 1
-)
+AS
+WITH avg_daily_prices AS (
+SELECT 
+	DATE(datetime) AS date, 
+    AVG(price_magic_usd) AS price_magic_usd, 
+    AVG(price_eth_usd) AS price_eth_usd
+FROM token_prices
+GROUP BY 1),
+daily_magic_volume AS (
 SELECT 
 	DATE(a.datetime) AS date, 
     nft_collection,
     ROUND(SUM(sale_amt_magic), 2) AS volume_magic, 
-    ROUND(SUM(sale_amt_magic * price_magic_usd), 2) AS volume_usd,
-    ROUND(SUM((sale_amt_magic * price_magic_usd)/price_eth_usd), 2) AS volume_eth,
 	SUM(quantity) AS n_sales,
-    ROUND(SUM(sale_amt_magic) / SUM(quantity), 2) AS avg_sale_amt_magic,
-    ROUND(SUM(sale_amt_magic * price_magic_usd) / SUM(quantity), 2) AS avg_sale_amt_usd,
-    ROUND(SUM((sale_amt_magic * price_magic_usd)/price_eth_usd) / SUM(quantity), 2) AS avg_sale_amt_eth
+    ROUND(SUM(sale_amt_magic) / SUM(quantity), 2) AS avg_sale_amt_magic
 FROM marketplace_sales a 
-INNER JOIN staging_2 b ON a.tx_hash = b.tx_hash
-INNER JOIN token_prices c ON b.closest_price_time = c.datetime
 GROUP BY 1, 2
-ORDER BY 1 DESC, 2;
+)
+SELECT 
+	a.*,
+	volume_magic * price_magic_usd AS volume_usd,
+    (volume_magic * price_magic_usd) / price_eth_usd AS volume_eth,
+	(volume_magic * price_magic_usd) / n_sales AS avg_sale_amt_usd,
+    ((volume_magic * price_magic_usd) / price_eth_usd) / n_sales AS avg_sale_amt_eth
+FROM daily_magic_volume a
+INNER JOIN avg_daily_prices b ON a.date = b.date;
