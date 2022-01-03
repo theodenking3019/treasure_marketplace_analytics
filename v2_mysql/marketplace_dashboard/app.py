@@ -1,18 +1,77 @@
+# import packages
 import dash
 from dash import dcc
 from dash import html
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State, MATCH, ALL
+import dash_daq as daq
+import dash_bootstrap_components as dbc
 import plotly.express as px
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
 
+import base64
+import datetime as dt
 import os
 import json
+import numpy as np
 import pandas as pd
 from sqlalchemy import create_engine
 
 app = dash.Dash(__name__)
 
-# read in data
-sql_credential = os.path.join("constants", "mysql_credential.json")
+plot_color_palette = [
+    '#ff0063',
+    '#8601fe',
+    '#05ff9c',
+    '#fefe00',
+    '#1601ff',
+]
+
+# define functions
+def q75(x):
+    return np.percentile(x, 75)
+
+def q25(x):
+    return np.percentile(x, 25)
+
+# define user inputs and attributes matching
+attributes_by_collection = {
+    'treasures': ['nft_subcategory'],
+    'smol_brains': ['gender','body','hat','glasses','mouth','clothes', 'is_one_of_one'], 
+    'legions_genesis': ['nft_subcategory'],
+    'smol_cars': ['background','base_color','spots','tire_color','window_color','tip_color','lights_color','door_color','wheel_color', 'is_one_of_one'],
+    'life': [np.nan],
+    'smol_brain_lands': [np.nan],
+    'smol_bodies': ['gender','background', 'body','clothes','feet','hands','head'],
+    'quest_keys': [np.nan],
+    'legions': ['nft_subcategory'],
+    'extra_life': [np.nan]
+}
+
+date_toggle_options = {
+    '1 day': 1,
+    '7 day': 7,
+    '30 day': 30,
+    'All time': 100000
+}
+
+date_interval_options = {
+    '15 min': '15min',
+    '30 min': '30min',
+    '1 hour': '1h',
+    '6 hour': '6h',
+    '12 hour': '12h',
+    '1 day': '1d'
+}
+
+pricing_unit_options = {
+    'MAGIC': 'sale_amt_magic',
+    'USD': 'sale_amt_usd',
+    'ETH': 'sale_amt_eth'
+}
+
+# connect to database
+sql_credential = os.path.join("v2_mysql","build_database_test", "constants", "mysql_credential.json")
 with open(sql_credential) as f:
     mysql_credentials = json.loads(f.read())
 engine = create_engine(
@@ -25,91 +84,324 @@ engine = create_engine(
 )
 connection = engine.connect()
 
+# read in sales data
 marketplace_sales_list = []
 marketplace_sales_query = connection.execute('SELECT * FROM treasure.marketplace_sales')
 for row in marketplace_sales_query:
     marketplace_sales_list.append(row)
 marketplace_sales = pd.DataFrame(marketplace_sales_list)
 marketplace_sales.columns=list(marketplace_sales_query.keys())
+
+# read in token prices
+token_prices_list = []
+token_prices_query = connection.execute('SELECT * FROM treasure.token_prices')
+for row in token_prices_query:
+    token_prices_list.append(row)
+token_prices = pd.DataFrame(token_prices_list)
+token_prices.columns=list(token_prices_query.keys())
+
+# read in attributes
+attributes_dfs = {}
+for key, value in attributes_by_collection.items():
+    if ((not pd.isnull(value[0])) & (len(value) > 1)):
+        tmp_attributes_lst = []
+        tmp_attributes_query = connection.execute('SELECT * FROM treasure.attributes_{}'.format(key))
+        for row in tmp_attributes_query:
+            tmp_attributes_lst.append(row)
+        tmp_attributes = pd.DataFrame(tmp_attributes_lst)
+        tmp_attributes.columns=list(tmp_attributes_query.keys())
+        tmp_attributes = tmp_attributes.loc[:, value + ['id']]
+        attributes_dfs[key] = tmp_attributes
+
 connection.close()
 engine.dispose()
 
+collections = list(marketplace_sales.nft_collection.unique()) + ['all']
 
-df = pd.read_csv('https://plotly.github.io/datasets/country_indicators.csv')
+marketplace_sales['date'] = marketplace_sales['datetime'].dt.date
+token_prices['date'] = token_prices['datetime'].dt.date
+token_prices.rename(columns={'datetime':'token_price_datetime'}, inplace=True)
 
-available_indicators = df['Indicator Name'].unique()
+marketplace_sales = marketplace_sales.merge(token_prices, how='left', on='date')
+marketplace_sales['token_price_sale_datetime_diff'] = marketplace_sales['datetime'] - marketplace_sales['token_price_datetime']
+most_recent_token_prices = marketplace_sales.groupby('tx_hash',as_index=False).agg({'token_price_sale_datetime_diff':'min'})
+marketplace_sales = marketplace_sales.merge(most_recent_token_prices, how='inner', on=['tx_hash', 'token_price_sale_datetime_diff'])
+marketplace_sales['sale_amt_usd'] = marketplace_sales['sale_amt_magic'] * marketplace_sales['price_magic_usd']
+marketplace_sales['sale_amt_eth'] = (marketplace_sales['sale_amt_magic'] * marketplace_sales['price_magic_usd']) / marketplace_sales['price_eth_usd']
 
+dropdown_style = {
+    'color':'#FFFFFF',
+    'background-color':'#374251', 
+    'border-color':'rgb(229 231 235)', 
+    'border-radius':'border-radius: 0.375rem'
+    }
+
+# create app layout
 app.layout = html.Div([
     html.Div([
-
-        html.Div([
-            dcc.Dropdown(
-                id='xaxis-column',
-                options=[{'label': i, 'value': i} for i in available_indicators],
-                value='Fertility rate, total (births per woman)'
-            ),
-            dcc.RadioItems(
-                id='xaxis-type',
-                options=[{'label': i, 'value': i} for i in ['Linear', 'Log']],
-                value='Linear',
-                labelStyle={'display': 'inline-block'}
-            )
-        ], style={'width': '48%', 'display': 'inline-block'}),
-
-        html.Div([
-            dcc.Dropdown(
-                id='yaxis-column',
-                options=[{'label': i, 'value': i} for i in available_indicators],
-                value='Life expectancy at birth, total (years)'
-            ),
-            dcc.RadioItems(
-                id='yaxis-type',
-                options=[{'label': i, 'value': i} for i in ['Linear', 'Log']],
-                value='Linear',
-                labelStyle={'display': 'inline-block'}
-            )
-        ], style={'width': '48%', 'float': 'right', 'display': 'inline-block'})
+        html.Img(id='treasureLogo', src=app.get_asset_url('img/treasure_logo.png')),
+        html.H1('Treasure NFT Dashboard', id='bannerTitle')
+        ], className='bannerContainer'),
+    html.Div([
+        dbc.Row([
+            dbc.Col('NFT Collection:', class_name='headlineControlText'),
+            dbc.Col(
+                dcc.Dropdown(
+                    id='collection_dropdown',
+                    options=[{'label': i, 'value': i} for i in collections],
+                    value='all',
+                    style=dropdown_style), 
+                    width=2),
+            dbc.Col('Display Currency:', class_name='headlineControlText'),
+            dbc.Col(
+                dcc.Dropdown(
+                    id='pricing_unit',
+                    options=[{'label': key, 'value': value} for key, value in pricing_unit_options.items()],
+                    value='sale_amt_magic',
+                    style=dropdown_style
+                ),
+                width=2),
+            dbc.Col('Lookback Window:', class_name='headlineControlText'),
+            dbc.Col(
+                dcc.Dropdown(
+                    id='time_window',
+                    options=[{'label': key, 'value': value} for key, value in date_toggle_options.items()],
+                    value=30,
+                    style=dropdown_style
+                ),
+                width=2)],
+                class_name='headlineControl'),
+        html.Div(id='attributeDropdownContainer', children=[])], id='controls'),
+    html.Div([
+            html.Div([html.Div('Number of Sales:'), html.Div(id='n_sales', className='summaryStatMetric')], className='summaryStatBox'),
+            html.Div([html.Div('Min Sale Price:'), html.Div(id='min_sale', className='summaryStatMetric')], className='summaryStatBox'),
+            html.Div([html.Div('Avg Sale Price:'), html.Div(id='avg_sale', className='summaryStatMetric')], className='summaryStatBox'),
+            html.Div([html.Div('Total Volume:'), html.Div(id='volume', className='summaryStatMetric')], className='summaryStatBox')],
+        id='summaryStatsContainer'),
+    html.Div([
+        daq.ToggleSwitch(
+        id='outlier_toggle',
+        label='Hide Outliers',
+        labelPosition='top',
+        # theme={'dark': True},
+        value=True
+        )
     ]),
-
-    dcc.Graph(id='indicator-graphic'),
-
-    dcc.Slider(
-        id='year--slider',
-        min=df['Year'].min(),
-        max=df['Year'].max(),
-        value=df['Year'].max(),
-        marks={str(year): str(year) for year in df['Year'].unique()},
-        step=None
-    )
+    dcc.Graph(id='sales_scatter'),
+    html.Div([
+        dcc.Dropdown(
+        id='time_interval',
+        options=[{'label': key, 'value': value} for key, value in date_interval_options.items()],
+        value='1d',
+        style=dropdown_style
+        )
+    ]),
+    dcc.Graph(id='volume_floor_prices'),
 ])
+
+# function to dynamically update attribute inputs based on the collection
+@app.callback(
+    Output('attributeDropdownContainer', 'children'),
+    Input('collection_dropdown', 'value'),
+    State('attributeDropdownContainer', 'children'))
+def display_dropdowns(collection_value, children):
+    # if np.isnan(collection_value):
+    #     return
+    marketplace_sales_filtered = marketplace_sales.copy()
+    if collection_value=='all':
+        id_columns = [np.nan]
+    else:
+        id_columns = attributes_by_collection[collection_value]
+        marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered['nft_collection']==collection_value]
+    if len(id_columns) > 1:
+        attributes_df = attributes_dfs[collection_value]
+        attributes_df = attributes_df.fillna('None')
+        marketplace_sales_filtered = marketplace_sales_filtered.merge(attributes_df, how='inner',left_on='nft_id', right_on='id')
+    children = []
+    if (not pd.isnull(id_columns[0])): 
+        for attribute in id_columns:
+            new_dropdown = html.Div([
+                html.Div(
+                    id={
+                        'type':'filter_label',
+                        'index':attribute
+                    },
+                ),
+                dcc.Dropdown(
+                    id={
+                        'type':'filter_dropdown',
+                        'index':attribute
+                    },
+                    options=[{'label': i, 'value': i} for i in list(marketplace_sales_filtered[attribute].unique()) + ['any']],
+                    value='any',
+                    style=dropdown_style
+                )
+            ], className='attributeBox')
+            children.append(new_dropdown)
+    return children
+
+# function to update the attribute labels
+@app.callback(
+    Output({'type': 'filter_label', 'index': MATCH}, 'children'),
+    Input({'type': 'filter_dropdown', 'index': MATCH}, 'id')
+)
+def display_output(id):
+    return html.Div('{}:'.format(id['index']))
+
+# function to dynamically update inputs for brains and bodies based on gender
+# @app.callback(
+#     Output({'type': 'filter_dropdown', 'index': MATCH}, 'options'),
+#     Input({'type': 'filter_dropdown', 'index': MATCH}, 'value'),
+#     State({'type': 'filter_dropdown', 'index': MATCH}, 'id'),
+#     State('collection_dropdown', 'value'))
+# def filter_attributes_gender(gender_value, id, collection_value):
+#     marketplace_sales_filtered = marketplace_sales.copy()
+#     if gender_value in ['male', 'female']:
+#         attributes_df = attributes_dfs[collection_value]
+#         attributes_df = attributes_df.fillna('None')
+#         marketplace_sales_filtered = marketplace_sales_filtered.merge(attributes_df, how='inner',left_on='nft_id', right_on='id')
+#         marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered['gender'].isin([gender_value] if gender_value!='any' else marketplace_sales_filtered['gender'].unique())].copy()
+#     return [{'label': i, 'value': i} for i in list(marketplace_sales_filtered[id['index']].unique()) + ['any']]
+
+# console log tester
+# @app.callback(
+#     Output('n_sales', 'children'),
+#     Input({'type': 'filter_dropdown', 'index': ALL}, 'value'),
+
+# )
+# def display_output(id):
+#     app.logger.info(id)
+#     # for i in id:
+#     #     app.logger.info(i['index'])
+#     return []
 
 
 @app.callback(
-    Output('indicator-graphic', 'figure'),
-    Input('xaxis-column', 'value'),
-    Input('yaxis-column', 'value'),
-    Input('xaxis-type', 'value'),
-    Input('yaxis-type', 'value'),
-    Input('year--slider', 'value'))
-def update_graph(xaxis_column_name, yaxis_column_name,
-                 xaxis_type, yaxis_type,
-                 year_value):
-    dff = df[df['Year'] == year_value]
+    Output('n_sales', 'children'),
+    Output('min_sale', 'children'),
+    Output('avg_sale', 'children'),
+    Output('volume', 'children'),
+    Output('sales_scatter', 'figure'),
+    Output('volume_floor_prices', 'figure'),
+    Input('collection_dropdown', 'value'),
+    Input({'type': 'filter_dropdown', 'index': ALL}, 'value'),
+    State({'type': 'filter_dropdown', 'index': ALL}, 'id'),
+    Input('pricing_unit', 'value'),
+    Input('time_window', 'value'),
+    Input('outlier_toggle', 'value'),
+    Input('time_interval', 'value'),
+    )
+def update_stats(collection_value, value_columns, filter_columns, pricing_unit_value, time_window_value, outlier_toggle_value, time_interval_value):
+    # if np.isnan(collection_value):
+    #     return
+    marketplace_sales_filtered = marketplace_sales.copy()
+    if collection_value=='all':
+        id_columns = [np.nan]
+    else:
+        id_columns = attributes_by_collection[collection_value]
+        marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered['nft_collection']==collection_value]
+    if len(id_columns) > 1:
+        attributes_df = attributes_dfs[collection_value]
+        attributes_df = attributes_df.fillna('None')
+        marketplace_sales_filtered = marketplace_sales_filtered.merge(attributes_df, how='inner',left_on='nft_id', right_on='id')
 
-    fig = px.scatter(x=dff[dff['Indicator Name'] == xaxis_column_name]['Value'],
-                     y=dff[dff['Indicator Name'] == yaxis_column_name]['Value'],
-                     hover_name=dff[dff['Indicator Name'] == yaxis_column_name]['Country Name'])
+    if filter_columns:
+        for filt, val in zip(filter_columns, value_columns):
+            marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered[filt['index']].isin([val]) if val!='any' else marketplace_sales_filtered[filt['index']].isin(marketplace_sales_filtered[filt['index']].unique())]
+    marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered['datetime'] >= pd.to_datetime(dt.datetime.now() - dt.timedelta(days = time_window_value))]
 
-    fig.update_layout(margin={'l': 40, 'b': 40, 't': 10, 'r': 0}, hovermode='closest')
+    sales = marketplace_sales_filtered[pricing_unit_value].count()
+    min_price = marketplace_sales_filtered[pricing_unit_value].min()
+    avg_price = marketplace_sales_filtered[pricing_unit_value].mean()
+    volume = marketplace_sales_filtered[pricing_unit_value].sum()
 
-    fig.update_xaxes(title=xaxis_column_name,
-                     type='linear' if xaxis_type == 'Linear' else 'log')
+    if outlier_toggle_value:
+        # use daily IQR
+        outlier_calc = marketplace_sales_filtered.groupby('date', as_index=True).agg({pricing_unit_value:[q25, q75]})
+        outlier_calc.columns = outlier_calc.columns.droplevel(0)
+        outlier_calc = outlier_calc.rename_axis(None, axis=1)
+        outlier_calc['cutoff'] = (outlier_calc['q75'] - outlier_calc['q25']) * 1.5
+        outlier_calc['upper'] = outlier_calc['q75'] + outlier_calc['cutoff']
+        outlier_calc['lower'] = outlier_calc['q25'] - outlier_calc['cutoff']
 
-    fig.update_yaxes(title=yaxis_column_name,
-                     type='linear' if yaxis_type == 'Linear' else 'log')
+        marketplace_sales_filtered = marketplace_sales_filtered.merge(outlier_calc, how='inner', on='date')
+        marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered[pricing_unit_value] <= marketplace_sales_filtered['upper']]
+        marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered[pricing_unit_value] >= marketplace_sales_filtered['lower']]
 
-    return fig
+    pricing_unit_label = 'MAGIC'
+    if pricing_unit_value == 'sale_amt_usd':
+        pricing_unit_label = 'USD'
+    if pricing_unit_value == 'sale_amt_eth':
+        pricing_unit_label = 'ETH'
+
+    fig1 = px.scatter(marketplace_sales_filtered,
+                     x='datetime',
+                     y=pricing_unit_value,
+                     trendline = 'ols',
+                     hover_name='nft_id',
+                     color_discrete_sequence=plot_color_palette)
+    fig1.update_traces(marker=dict(size=6,
+                              line=dict(width=1, color='DarkSlateGrey')))
+    fig1.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font_color='white',
+        hovermode='closest')
+    fig1.update_xaxes(type='date',
+                     gridcolor='#222938')
+    fig1.update_yaxes(title='{}'.format(pricing_unit_label),
+                     type='linear',
+                     gridcolor='#8292a4')
+
+    marketplace_sales_agg = marketplace_sales_filtered.copy()
+    marketplace_sales_agg['datetime'] = marketplace_sales_agg['datetime'].dt.floor(time_interval_value)
+    marketplace_sales_agg = marketplace_sales_agg.groupby('datetime').agg({pricing_unit_value:['sum', 'min','mean']})
+    marketplace_sales_agg.columns = marketplace_sales_agg.columns.droplevel(0)
+    marketplace_sales_agg = marketplace_sales_agg.rename_axis(None, axis=1)
+
+    fig2 = make_subplots(specs=[[{"secondary_y": True}]])
+
+    fig2.add_scatter(x=marketplace_sales_agg.index,
+                     y=marketplace_sales_agg['mean'],
+                     name='Average Sale',
+                     mode='lines',
+                     secondary_y=True,
+                     marker={'color':plot_color_palette[0], 'line':{'width':50}})
+    fig2.add_scatter(x=marketplace_sales_agg.index,
+                     y=marketplace_sales_agg['min'],
+                     name='Minimum Sale',
+                     mode='lines',
+                     secondary_y=True,
+                     marker={'color':plot_color_palette[2], 'line':{'width':50}})
+    fig2.add_bar(x=marketplace_sales_agg.index,
+                     y=marketplace_sales_agg['sum'],
+                     name='Volume',
+                     marker={'color':plot_color_palette[1], 'line': {'width':1.5, 'color':'DarkSlateGrey'}})
+    fig2.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        hovermode='closest',
+        font_color='white',
+        legend=dict(
+        yanchor="bottom",
+        y=-0.3,
+        xanchor="left",
+        x=0.75))
+    fig2.update_xaxes(type='date')
+    fig2.update_yaxes(title='Volume, {}'.format(pricing_unit_label),
+                     type='linear',
+                     gridcolor='#8292a4')
+    fig2['layout']['yaxis2']['showgrid'] = False
+    fig2['layout']['yaxis2']['title'] = 'Avg Sale Amount'
+
+
+    return '{:,.0f}'.format(sales),\
+            '{:,.2f}'.format(min_price),\
+            '{:,.2f}'.format(avg_price),\
+            '{:,.2f}'.format(volume),\
+            fig1,\
+            fig2
 
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run_server(debug=True, dev_tools_silence_routes_logging = False)

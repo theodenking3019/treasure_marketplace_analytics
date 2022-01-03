@@ -3,10 +3,10 @@ CREATE OR REPLACE VIEW agg_daily_vol_by_nft (
     nft_collection,
     nft,
     volume_magic,
-    volume_usd,
-    volume_eth,
     n_sales, 
     avg_sale_amt_magic,
+    volume_usd,
+    volume_eth,
     avg_sale_amt_usd,
     avg_sale_amt_eth
 )
