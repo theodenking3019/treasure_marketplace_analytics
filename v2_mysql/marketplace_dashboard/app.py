@@ -15,6 +15,7 @@ import os
 import json
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
 from sqlalchemy import create_engine
 
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
@@ -362,19 +363,43 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
     if pricing_unit_value == 'sale_amt_eth':
         pricing_unit_label = 'ETH'
 
+    marketplace_sales_filtered['nft_collection_formatted'] = [x.title().replace("_", " ")  for x in marketplace_sales_filtered['nft_collection']]
+    marketplace_sales_filtered.loc[pd.isnull(marketplace_sales_filtered['nft_subcategory']), 'nft_subcategory'] = ''
     fig1 = px.scatter(marketplace_sales_filtered,
                      x='datetime',
                      y=pricing_unit_value,
-                     trendline = 'ols',
-                     hover_name='nft_id',
+                    #  trendline='ols',
+                     custom_data=['nft_collection_formatted', 'nft_id', 'nft_subcategory'],
                      color_discrete_sequence=plot_color_palette)
-    fig1.update_traces(marker=dict(size=6,
-                              line=dict(width=1, color='DarkSlateGrey')))
+    fig1.update_traces(hovertemplate='%{customdata[0]} %{customdata[1]}<br>%{customdata[2]}<br><br>Date: %{x}<br>Sale Amount: %{y}')
+
+    # trendline
+    if len(marketplace_sales_filtered) > 1:
+        Y = marketplace_sales_filtered[pricing_unit_value]
+        X = pd.to_datetime(marketplace_sales_filtered['datetime']).map(dt.datetime.toordinal)
+        X = sm.add_constant(X)
+        model = sm.OLS(Y,X)
+        regression = model.fit()
+        marketplace_sales_filtered['preds'] = regression.predict(X)
+        marketplace_sales_filtered.sort_values(by='datetime', inplace=True)
+
+        fig1.add_trace(
+            go.Scatter(
+                x=marketplace_sales_filtered['datetime'], 
+                y=marketplace_sales_filtered['preds'], 
+                mode='lines', 
+                hoverinfo='skip', 
+                marker={'color':plot_color_palette[0]}, 
+                line = {'shape':'spline', 'smoothing':1.3})
+            )
+    fig1.update_traces(marker=dict(size=6, line=dict(width=1, color='DarkSlateGrey')))
     fig1.update_layout(
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         font_color='white',
-        hovermode='closest')
+        hovermode='closest',
+        showlegend=False)
+    
     fig1.update_xaxes(title = '',
                      type='date',
                      gridcolor='#222938')
@@ -430,7 +455,6 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
             '{:,.2f}'.format(volume),\
             fig1,\
             fig2
-
 
 if __name__ == '__main__':
     app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
