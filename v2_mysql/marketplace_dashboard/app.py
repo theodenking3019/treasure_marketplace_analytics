@@ -140,62 +140,68 @@ dropdown_style = {
 app.layout = html.Div([
     html.Div([
         html.Img(id='treasureLogo', src=app.get_asset_url('img/treasure_logo.png')),
-        html.H1('Treasure NFT Dashboard', id='bannerTitle')
+        html.H1('Treasure NFT Sales', id='bannerTitle')
         ], className='bannerContainer'),
     html.Div([
-        dbc.Row([
-            dbc.Col('NFT Collection:', class_name='headlineControlText'),
-            dbc.Col(
+        html.Div([
+            html.Div([
+                html.Div('NFT Collection:', className='headlineControlText'),
                 dcc.Dropdown(
                     id='collection_dropdown',
-                    options=[{'label': i, 'value': i} for i in collections],
+                    options=[{'label': i.title().replace('_', ' '), 'value': i} for i in collections],
                     value='all',
-                    style=dropdown_style), 
-                    width=2),
-            dbc.Col('Display Currency:', class_name='headlineControlText'),
-            dbc.Col(
+                    clearable=False,
+                    style=dropdown_style,
+                    className='headlineDropdown')], 
+                className='headlineControl'),
+            html.Div([
+                html.Div('Display Currency:', className='headlineControlText'),
                 dcc.Dropdown(
                     id='pricing_unit',
                     options=[{'label': key, 'value': value} for key, value in pricing_unit_options.items()],
                     value='sale_amt_magic',
-                    style=dropdown_style
-                ),
-                width=2),
-            dbc.Col('Lookback Window:', class_name='headlineControlText'),
-            dbc.Col(
+                    clearable=False,
+                    style=dropdown_style,
+                    className='headlineDropdown')],
+                className='headlineControl'),
+            html.Div([
+                html.Div('Lookback Window:', className='headlineControlText'),
                 dcc.Dropdown(
                     id='time_window',
                     options=[{'label': key, 'value': value} for key, value in date_toggle_options.items()],
                     value=30,
-                    style=dropdown_style
-                ),
-                width=2)],
-                class_name='headlineControl'),
+                    clearable=False,
+                    style=dropdown_style,
+                    className='headlineDropdown')],
+                className='headlineControl')],
+                id='headlineControlContainer'),
         html.Div(id='attributeDropdownContainer', children=[])], id='controls'),
     html.Div([
-            html.Div([html.Div('Number of Sales:'), html.Div(id='n_sales', className='summaryStatMetric')], className='summaryStatBox'),
-            html.Div([html.Div('Min Sale Price:'), html.Div(id='min_sale', className='summaryStatMetric')], className='summaryStatBox'),
-            html.Div([html.Div('Avg Sale Price:'), html.Div(id='avg_sale', className='summaryStatMetric')], className='summaryStatBox'),
-            html.Div([html.Div('Total Volume:'), html.Div(id='volume', className='summaryStatMetric')], className='summaryStatBox')],
+            html.Div([html.Div('Number of Sales: '), html.Div(id='n_sales', className='summaryStatMetric')], className='summaryStatBox'),
+            html.Div([html.Div('Min Sale Price: '), html.Div(id='min_sale', className='summaryStatMetric')], className='summaryStatBox'),
+            html.Div([html.Div('Avg Sale Price: '), html.Div(id='avg_sale', className='summaryStatMetric')], className='summaryStatBox'),
+            html.Div([html.Div('Total Volume: '), html.Div(id='volume', className='summaryStatMetric')], className='summaryStatBox')],
         id='summaryStatsContainer'),
     html.Div([
+        html.Div('Outliers'),
         daq.ToggleSwitch(
-        id='outlier_toggle',
-        label='Hide Outliers',
-        labelPosition='top',
-        # theme={'dark': True},
-        value=True
-        )
-    ]),
+            id='outlier_toggle',
+            label=['Show', 'Hide'],
+            color='#374251',
+            value=True
+        ),
+    ], id='outlierToggleContainer'),
     dcc.Graph(id='sales_scatter'),
     html.Div([
-        dcc.Dropdown(
-        id='time_interval',
-        options=[{'label': key, 'value': value} for key, value in date_interval_options.items()],
-        value='1d',
-        style=dropdown_style
-        )
-    ]),
+        dbc.Col('Frequency:'),
+        dbc.Col(dcc.Dropdown(
+            id='time_interval',
+            options=[{'label': key, 'value': value} for key, value in date_interval_options.items()],
+            value='1d',
+            clearable=False,
+            style=dropdown_style
+        ), width=1)
+    ], id='frequencyIntervalContainer'),
     dcc.Graph(id='volume_floor_prices'),
 ])
 
@@ -205,13 +211,13 @@ app.layout = html.Div([
     Input('collection_dropdown', 'value'),
     State('attributeDropdownContainer', 'children'))
 def display_dropdowns(collection_value, children):
-    # if np.isnan(collection_value):
-    #     return
     marketplace_sales_filtered = marketplace_sales.copy()
     if collection_value=='all':
         id_columns = [np.nan]
     else:
         id_columns = attributes_by_collection[collection_value]
+        if 'is_one_of_one' in id_columns:
+            id_columns.remove('is_one_of_one')
         marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered['nft_collection']==collection_value]
     if len(id_columns) > 1:
         attributes_df = attributes_dfs[collection_value]
@@ -234,6 +240,7 @@ def display_dropdowns(collection_value, children):
                     },
                     options=[{'label': i, 'value': i} for i in list(marketplace_sales_filtered[attribute].unique()) + ['any']],
                     value='any',
+                    clearable=False,
                     style=dropdown_style
                 )
             ], className='attributeBox')
@@ -246,7 +253,10 @@ def display_dropdowns(collection_value, children):
     Input({'type': 'filter_dropdown', 'index': MATCH}, 'id')
 )
 def display_output(id):
-    return html.Div('{}:'.format(id['index']))
+    title = id['index'].replace('_', ' ')
+    if title == 'nft subcategory':
+        title = 'Type' 
+    return html.Div('{}:'.format(title))
 
 # function to dynamically update inputs for brains and bodies based on gender
 # @app.callback(
@@ -292,8 +302,6 @@ def display_output(id):
     Input('time_interval', 'value'),
     )
 def update_stats(collection_value, value_columns, filter_columns, pricing_unit_value, time_window_value, outlier_toggle_value, time_interval_value):
-    # if np.isnan(collection_value):
-    #     return
     marketplace_sales_filtered = marketplace_sales.copy()
     if collection_value=='all':
         id_columns = [np.nan]
@@ -347,7 +355,8 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
         plot_bgcolor='rgba(0,0,0,0)',
         font_color='white',
         hovermode='closest')
-    fig1.update_xaxes(type='date',
+    fig1.update_xaxes(title = '',
+                     type='date',
                      gridcolor='#222938')
     fig1.update_yaxes(title='{}'.format(pricing_unit_label),
                      type='linear',
