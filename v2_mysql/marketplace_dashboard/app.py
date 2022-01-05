@@ -263,7 +263,6 @@ def reset_attributes(reset, filter_value):
     reset_val_list = []
     for val in filter_value:
         reset_val_list.append('any')
-    app.logger.info(reset_val_list)
     return reset_val_list
 
 # function to update the attribute labels
@@ -278,32 +277,34 @@ def display_output(id):
     return html.Div('{}:'.format(title))
 
 # function to dynamically update inputs for brains and bodies based on gender
-# @app.callback(
-#     Output({'type': 'filter_dropdown', 'index': MATCH}, 'options'),
-#     Input({'type': 'filter_dropdown', 'index': MATCH}, 'value'),
-#     State({'type': 'filter_dropdown', 'index': MATCH}, 'id'),
-#     State('collection_dropdown', 'value'))
-# def filter_attributes_gender(gender_value, id, collection_value):
-#     marketplace_sales_filtered = marketplace_sales.copy()
-#     if gender_value in ['male', 'female']:
-#         attributes_df = attributes_dfs[collection_value]
-#         attributes_df = attributes_df.fillna('N/A')
-#         marketplace_sales_filtered = marketplace_sales_filtered.merge(attributes_df, how='inner',left_on='nft_id', right_on='id')
-#         marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered['gender'].isin([gender_value] if gender_value!='any' else marketplace_sales_filtered['gender'].unique())].copy()
-#     return [{'label': i, 'value': i} for i in list(marketplace_sales_filtered[id['index']].unique()) + ['any']]
+@app.callback(
+    Output({'type': 'filter_dropdown', 'index': ALL}, 'options'),
+    Input({'type': 'filter_dropdown', 'index': ALL}, 'value'),
+    State('collection_dropdown', 'value'),
+    State({'type': 'filter_dropdown', 'index': ALL}, 'id'),
+)
+def filter_attributes_gender(filter_value, collection_value, filter_id):
+    if 'gender' not in  attributes_by_collection[collection_value]:
+        raise('Gender is not an attribute')
+    if 'male' in filter_value:
+        gender_value = 'male'
+    elif 'female' in filter_value:
+        gender_value = 'female'
+    else:
+        gender_value = 'any'
+    marketplace_sales_filtered = marketplace_sales.copy()
+    attributes_df = attributes_dfs[collection_value]
+    attributes_df = attributes_df.fillna('N/A')
+    marketplace_sales_filtered = marketplace_sales_filtered.merge(attributes_df, how='inner',left_on='nft_id', right_on='id')
+    marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered['gender'].isin([gender_value] if gender_value!='any' else marketplace_sales_filtered['gender'].unique())].copy()
 
-# console log tester
-# @app.callback(
-#     Output('n_sales', 'children'),
-#     Input({'type': 'filter_dropdown', 'index': ALL}, 'value'),
-
-# )
-# def display_output(id):
-#     app.logger.info(id)
-#     # for i in id:
-#     #     app.logger.info(i['index'])
-#     return []
-
+    options = []
+    for item in filter_id:
+        if item['index']=='gender':
+            options.append([{'label': i, 'value': i} for i in list(attributes_df[item['index']].unique()) + ['any']])
+        else:
+            options.append([{'label': i, 'value': i} for i in list(marketplace_sales_filtered[item['index']].unique()) + ['any']])
+    return options
 
 @app.callback(
     Output('n_sales', 'children'),

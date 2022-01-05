@@ -74,7 +74,7 @@ body {
 }
 
 .headlineDropdown {
-  min-width: 150px;
+  min-width: 175px;
   width: 40%;
 }
 
@@ -91,7 +91,7 @@ body {
   flex-basis: 8%;
   flex-grow: 0;
   flex-shrink: 1;
-  min-width: 100px;
+  min-width: 175px;
   margin: 0 5px;
 }
 
@@ -155,7 +155,7 @@ body {
   background-color: #374251;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 800px) {
 
   #summaryStatsContainer {
     flex-direction: column;
@@ -192,5 +192,9 @@ body {
 
   #frequencyIntervalContainer {
     margin: 0 0 -20%;
+  }
+
+  .attributeBox {
+    min-width: 75px;
   }
 }
