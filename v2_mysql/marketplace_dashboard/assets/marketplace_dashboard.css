@@ -92,6 +92,15 @@ body {
   flex-grow: 0;
   flex-shrink: 1;
   min-width: 100px;
+  margin: 0 5px;
+}
+
+.attributeText {
+  white-space: nowrap
+}
+
+#buttonLabel {
+  color: #000000
 }
 
 #summaryStatsContainer {

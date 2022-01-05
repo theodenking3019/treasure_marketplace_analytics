@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import create_engine
 
-app = dash.Dash(__name__)
+app = dash.Dash(__name__, suppress_callback_exceptions=True)
 
 plot_color_palette = [
     '#ff0063',
@@ -133,8 +133,8 @@ dropdown_style = {
     'color':'#FFFFFF',
     'background-color':'#374251', 
     'border-color':'rgb(229 231 235)', 
-    'border-radius':'border-radius: 0.375rem'
-    }
+    'border-radius':'0.375rem'
+}
 
 # create app layout
 app.layout = html.Div([
@@ -221,7 +221,7 @@ def display_dropdowns(collection_value, children):
         marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered['nft_collection']==collection_value]
     if len(id_columns) > 1:
         attributes_df = attributes_dfs[collection_value]
-        attributes_df = attributes_df.fillna('None')
+        attributes_df = attributes_df.fillna('N/A')
         marketplace_sales_filtered = marketplace_sales_filtered.merge(attributes_df, how='inner',left_on='nft_id', right_on='id')
     children = []
     if (not pd.isnull(id_columns[0])): 
@@ -232,6 +232,7 @@ def display_dropdowns(collection_value, children):
                         'type':'filter_label',
                         'index':attribute
                     },
+                    className='attributeText'
                 ),
                 dcc.Dropdown(
                     id={
@@ -245,12 +246,30 @@ def display_dropdowns(collection_value, children):
                 )
             ], className='attributeBox')
             children.append(new_dropdown)
+        button = html.Div([
+            html.Div('blank', id='buttonLabel'),
+            html.Div(html.Button('Reset',id='attributeResetButton', n_clicks=0, style=dropdown_style))
+        ])
+        children.append(button)
     return children
+
+# function to reset attribute values
+@app.callback(
+    Output({'type': 'filter_dropdown', 'index': ALL}, 'value'),
+    Input('attributeResetButton', 'n_clicks'),
+    State({'type': 'filter_dropdown', 'index': ALL}, 'value')
+)
+def reset_attributes(reset, filter_value):
+    reset_val_list = []
+    for val in filter_value:
+        reset_val_list.append('any')
+    app.logger.info(reset_val_list)
+    return reset_val_list
 
 # function to update the attribute labels
 @app.callback(
     Output({'type': 'filter_label', 'index': MATCH}, 'children'),
-    Input({'type': 'filter_dropdown', 'index': MATCH}, 'id')
+    Input({'type': 'filter_dropdown', 'index': MATCH}, 'id'),
 )
 def display_output(id):
     title = id['index'].replace('_', ' ')
@@ -268,7 +287,7 @@ def display_output(id):
 #     marketplace_sales_filtered = marketplace_sales.copy()
 #     if gender_value in ['male', 'female']:
 #         attributes_df = attributes_dfs[collection_value]
-#         attributes_df = attributes_df.fillna('None')
+#         attributes_df = attributes_df.fillna('N/A')
 #         marketplace_sales_filtered = marketplace_sales_filtered.merge(attributes_df, how='inner',left_on='nft_id', right_on='id')
 #         marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered['gender'].isin([gender_value] if gender_value!='any' else marketplace_sales_filtered['gender'].unique())].copy()
 #     return [{'label': i, 'value': i} for i in list(marketplace_sales_filtered[id['index']].unique()) + ['any']]
@@ -310,7 +329,7 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
         marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered['nft_collection']==collection_value]
     if len(id_columns) > 1:
         attributes_df = attributes_dfs[collection_value]
-        attributes_df = attributes_df.fillna('None')
+        attributes_df = attributes_df.fillna('N/A')
         marketplace_sales_filtered = marketplace_sales_filtered.merge(attributes_df, how='inner',left_on='nft_id', right_on='id')
 
     if filter_columns:
@@ -413,4 +432,4 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
 
 
 if __name__ == '__main__':
-    app.run_server(debug=True, dev_tools_silence_routes_logging = False)
+    app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
