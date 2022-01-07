@@ -18,7 +18,12 @@ import pandas as pd
 import statsmodels.api as sm
 from sqlalchemy import create_engine
 
-application = dash.Dash(__name__, suppress_callback_exceptions=True)
+app = dash.Dash(
+    __name__, 
+    title='Treasure NFT Sales',
+    meta_tags=[{'name': 'viewport', 'content': 'width=device-width, initial-scale=1.0'}])
+
+application = app.server
 
 plot_color_palette = [
     '#ff0063',
@@ -138,9 +143,9 @@ dropdown_style = {
 }
 
 # create app layout
-application.layout = html.Div([
+app.layout = html.Div([
     html.Div([
-        html.Img(id='treasureLogo', src=application.get_asset_url('img/treasure_logo.png')),
+        html.Img(id='treasureLogo', src=app.get_asset_url('img/treasure_logo.png')),
         html.H1('Treasure NFT Sales', id='bannerTitle')
         ], className='bannerContainer'),
     html.Div([
@@ -207,7 +212,7 @@ application.layout = html.Div([
 ])
 
 # function to dynamically update attribute inputs based on the collection
-@application.callback(
+@app.callback(
     Output('attributeDropdownContainer', 'children'),
     Input('collection_dropdown', 'value'),
     State('attributeDropdownContainer', 'children'))
@@ -255,7 +260,7 @@ def display_dropdowns(collection_value, children):
     return children
 
 # function to reset attribute values
-@application.callback(
+@app.callback(
     Output({'type': 'filter_dropdown', 'index': ALL}, 'value'),
     Input('attributeResetButton', 'n_clicks'),
     State({'type': 'filter_dropdown', 'index': ALL}, 'value')
@@ -267,7 +272,7 @@ def reset_attributes(reset, filter_value):
     return reset_val_list
 
 # function to update the attribute labels
-@application.callback(
+@app.callback(
     Output({'type': 'filter_label', 'index': MATCH}, 'children'),
     Input({'type': 'filter_dropdown', 'index': MATCH}, 'id'),
 )
@@ -278,7 +283,7 @@ def display_output(id):
     return html.Div('{}:'.format(title))
 
 # function to dynamically update inputs for brains and bodies based on gender
-@application.callback(
+@app.callback(
     Output({'type': 'filter_dropdown', 'index': ALL}, 'options'),
     Input({'type': 'filter_dropdown', 'index': ALL}, 'value'),
     State('collection_dropdown', 'value'),
@@ -307,7 +312,7 @@ def filter_attributes_gender(filter_value, collection_value, filter_id):
             options.append([{'label': i, 'value': i} for i in list(marketplace_sales_filtered[item['index']].unique()) + ['any']])
     return options
 
-@application.callback(
+@app.callback(
     Output('n_sales', 'children'),
     Output('min_sale', 'children'),
     Output('avg_sale', 'children'),
@@ -457,4 +462,4 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
             fig2
 
 if __name__ == '__main__':
-    application.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
+    application.run(debug=False, port=8080)
