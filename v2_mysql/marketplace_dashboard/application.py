@@ -18,7 +18,7 @@ import pandas as pd
 import statsmodels.api as sm
 from sqlalchemy import create_engine
 
-app = dash.Dash(__name__, suppress_callback_exceptions=True)
+application = dash.Dash(__name__, suppress_callback_exceptions=True)
 
 plot_color_palette = [
     '#ff0063',
@@ -72,7 +72,7 @@ pricing_unit_options = {
 }
 
 # connect to database
-sql_credential = os.path.join("v2_mysql","build_database_test", "constants", "mysql_credential.json")
+sql_credential = os.path.join("static", "mysql_credential.json")
 with open(sql_credential) as f:
     mysql_credentials = json.loads(f.read())
 engine = create_engine(
@@ -138,9 +138,9 @@ dropdown_style = {
 }
 
 # create app layout
-app.layout = html.Div([
+application.layout = html.Div([
     html.Div([
-        html.Img(id='treasureLogo', src=app.get_asset_url('img/treasure_logo.png')),
+        html.Img(id='treasureLogo', src=application.get_asset_url('img/treasure_logo.png')),
         html.H1('Treasure NFT Sales', id='bannerTitle')
         ], className='bannerContainer'),
     html.Div([
@@ -178,10 +178,10 @@ app.layout = html.Div([
                 id='headlineControlContainer'),
         html.Div(id='attributeDropdownContainer', children=[])], id='controls'),
     html.Div([
-            html.Div([html.Div('Number of Sales: '), html.Div(id='n_sales', className='summaryStatMetric')], className='summaryStatBox'),
-            html.Div([html.Div('Min Sale Price: '), html.Div(id='min_sale', className='summaryStatMetric')], className='summaryStatBox'),
-            html.Div([html.Div('Avg Sale Price: '), html.Div(id='avg_sale', className='summaryStatMetric')], className='summaryStatBox'),
-            html.Div([html.Div('Total Volume: '), html.Div(id='volume', className='summaryStatMetric')], className='summaryStatBox')],
+            html.Div([html.Div('Number of Sales: ', className='summaryStatLabel'), html.Div(id='n_sales', className='summaryStatMetric')], className='summaryStatBox'),
+            html.Div([html.Div('Min Sale Price: ', className='summaryStatLabel'), html.Div(id='min_sale', className='summaryStatMetric')], className='summaryStatBox'),
+            html.Div([html.Div('Avg Sale Price: ', className='summaryStatLabel'), html.Div(id='avg_sale', className='summaryStatMetric')], className='summaryStatBox'),
+            html.Div([html.Div('Total Volume: ', className='summaryStatLabel'), html.Div(id='volume', className='summaryStatMetric')], className='summaryStatBox')],
         id='summaryStatsContainer'),
     html.Div([
         html.Div('Outliers'),
@@ -201,13 +201,13 @@ app.layout = html.Div([
             value='1d',
             clearable=False,
             style=dropdown_style
-        ), width=1)
+        ))
     ], id='frequencyIntervalContainer'),
     dcc.Graph(id='volume_floor_prices'),
 ])
 
 # function to dynamically update attribute inputs based on the collection
-@app.callback(
+@application.callback(
     Output('attributeDropdownContainer', 'children'),
     Input('collection_dropdown', 'value'),
     State('attributeDropdownContainer', 'children'))
@@ -255,7 +255,7 @@ def display_dropdowns(collection_value, children):
     return children
 
 # function to reset attribute values
-@app.callback(
+@application.callback(
     Output({'type': 'filter_dropdown', 'index': ALL}, 'value'),
     Input('attributeResetButton', 'n_clicks'),
     State({'type': 'filter_dropdown', 'index': ALL}, 'value')
@@ -267,7 +267,7 @@ def reset_attributes(reset, filter_value):
     return reset_val_list
 
 # function to update the attribute labels
-@app.callback(
+@application.callback(
     Output({'type': 'filter_label', 'index': MATCH}, 'children'),
     Input({'type': 'filter_dropdown', 'index': MATCH}, 'id'),
 )
@@ -278,7 +278,7 @@ def display_output(id):
     return html.Div('{}:'.format(title))
 
 # function to dynamically update inputs for brains and bodies based on gender
-@app.callback(
+@application.callback(
     Output({'type': 'filter_dropdown', 'index': ALL}, 'options'),
     Input({'type': 'filter_dropdown', 'index': ALL}, 'value'),
     State('collection_dropdown', 'value'),
@@ -307,7 +307,7 @@ def filter_attributes_gender(filter_value, collection_value, filter_id):
             options.append([{'label': i, 'value': i} for i in list(marketplace_sales_filtered[item['index']].unique()) + ['any']])
     return options
 
-@app.callback(
+@application.callback(
     Output('n_sales', 'children'),
     Output('min_sale', 'children'),
     Output('avg_sale', 'children'),
@@ -438,9 +438,9 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
         font_color='white',
         legend=dict(
         yanchor="bottom",
-        y=-0.3,
+        y=-0.4,
         xanchor="left",
-        x=0.75))
+        x=0.85))
     fig2.update_xaxes(type='date')
     fig2.update_yaxes(title='Volume, {}'.format(pricing_unit_label),
                      type='linear',
@@ -457,4 +457,4 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
             fig2
 
 if __name__ == '__main__':
-    app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
+    application.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)

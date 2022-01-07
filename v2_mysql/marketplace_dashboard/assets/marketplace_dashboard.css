@@ -5,7 +5,7 @@
 
 @font-face {
   font-family: helveticaNeue;
-  src: url(fonts/Helvetica-Neue-Font/Helvetica\ Neue\ Medium\ Extended.otf);
+  src: url(fonts/Helvetica-Neue-Font/Helvetica\ Neue\ LT\ 55\ Roman.ttf);
 }
 
 html {
@@ -82,7 +82,7 @@ body {
   display: flex;
   justify-content: space-evenly;
   flex-wrap: wrap;
-  margin: 1% 0 0;
+  margin: 2% 0 0;
 }
 
 .attributeBox {
@@ -96,7 +96,8 @@ body {
 }
 
 .attributeText {
-  white-space: nowrap
+  white-space: nowrap;
+  margin-bottom: 5px;
 }
 
 #buttonLabel {
@@ -155,8 +156,21 @@ body {
   background-color: #374251;
 }
 
-.modebar{
-  display: none !important;
+#time_interval {
+  min-width: 40px;
+  margin-top: 5px;
+}
+
+#outlier_toggle {
+  margin-top: 5px;
+}
+
+#buttonLabel {
+  margin-bottom: 17%;
+}
+
+#attributeResetButton {
+  padding: 20%
 }
 
 @media (max-width: 800px) {
@@ -173,6 +187,10 @@ body {
     margin: 1.5% 0;
     padding: 5% 0;
   }
+
+.summaryStatLabel {
+  margin-right: 5px;
+}
 
   #headlineControlContainer {
     flex-direction: column;
