@@ -462,4 +462,5 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
             fig2
 
 if __name__ == '__main__':
+    # app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
     application.run(debug=False, port=8080)

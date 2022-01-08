@@ -188,14 +188,18 @@ body {
     padding: 5% 0;
   }
 
-.summaryStatLabel {
-  margin-right: 5px;
-}
+  .summaryStatLabel {
+    margin-right: 5px;
+  }
 
   #headlineControlContainer {
     flex-direction: column;
     align-items: flex-end;
     margin: 0 25% 0;
+  }
+
+  .headlineDropdown {
+    min-width: 25vw;
   }
 
   .headlineControl {
@@ -209,14 +213,19 @@ body {
   }
 
   #outlierToggleContainer {
-    margin: 0 0 -15%;
+    margin: 25% 0 -25%;
   }
 
   #frequencyIntervalContainer {
-    margin: 0 0 -20%;
+    margin: 0 0 -25%;
   }
 
   .attributeBox {
     min-width: 75px;
+  }
+
+  .js-plotly-plot {
+     margin: 100px 0px;
+
   }
 }
