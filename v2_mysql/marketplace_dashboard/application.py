@@ -76,7 +76,8 @@ dropdown_style = {
     'color':'#FFFFFF',
     'background-color':'#374251', 
     'border-color':'rgb(229 231 235)', 
-    'border-radius':'0.375rem'
+    'border-radius':'0.375rem',
+    'white-space': 'nowrap'
 }
 
 # connect to database
@@ -488,5 +489,5 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
     connection.close()
 
 if __name__ == '__main__':
-    app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
-    # application.run(debug=False, port=8080)
+    # app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
+    application.run(debug=False, port=8080)

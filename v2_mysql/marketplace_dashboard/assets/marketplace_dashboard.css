@@ -82,7 +82,7 @@ body {
   display: flex;
   justify-content: space-evenly;
   flex-wrap: wrap;
-  margin: 2% 0 0;
+  margin: 2% 2% 0;
 }
 
 .attributeBox {
@@ -173,6 +173,10 @@ body {
   padding: 20%
 }
 
+/* .Select-value-label {
+  color:#000000;
+} */
+
 @media (max-width: 800px) {
 
   #summaryStatsContainer {
@@ -221,11 +225,14 @@ body {
   }
 
   .attributeBox {
-    min-width: 75px;
+    min-width: 100px;
+  }
+
+  .Select-menu-outer {
+    font-size: 2.5vw;
   }
 
   .js-plotly-plot {
      margin: 100px 0px;
-
   }
 }
