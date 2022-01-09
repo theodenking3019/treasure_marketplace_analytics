@@ -86,7 +86,7 @@ def pull_arbiscan_data(arbiscan_api_key, method_ids, start_block=0, latest_tx_ha
     # read in marketplace txs
     marketplace_txs = get_contract_transactions(arbiscan_api_key, contract_addresses['treasure_marketplace'], start_block=start_block)
     marketplace_txs_df = pd.DataFrame.from_dict(marketplace_txs["result"])
-
+    print(marketplace_txs_df.hash[0])
     # filter txs against already existing records
     marketplace_txs_df = marketplace_txs_df.loc[~marketplace_txs_df['hash'].isin(latest_tx_hashes)]
 
@@ -116,7 +116,7 @@ def process_marketplace_txs(marketplace_txs_raw, method_ids, contract_addresses,
     marketplace_txs_raw["tx_type"] = marketplace_txs_raw["tx_type"].map(method_ids)
     marketplace_txs_raw = marketplace_txs_raw.loc[~pd.isnull(marketplace_txs_raw["tx_type"])] # null transactions are all whitelisting of certain accounts before marketplace launch
     marketplace_txs_raw['datetime'] = [dt.datetime.fromtimestamp(int(x), tz) for x in marketplace_txs_raw['timeStamp']]
-    marketplace_txs_raw['gas_fee_eth'] = marketplace_txs_raw['gasPrice'].astype('int64') * 1e-9 * marketplace_txs_raw['gasUsed'].astype(int) * 1e-9 
+    marketplace_txs_raw['gas_fee_eth'] = (marketplace_txs_raw['gasPrice'].astype('int64') * 1e-9 * marketplace_txs_raw['gasUsed'].astype(int) * 1e-9) / 2.0
     marketplace_txs_raw['nft_collection'] = [contract_addresses[x[33:74]] for x in marketplace_txs_raw['input']] # works for both types of txs
     marketplace_txs_raw['nft_id'] = [int(x[133:138], 16) for x in marketplace_txs_raw['input']] # also works for all types of txs
     marketplace_txs_raw.loc[marketplace_txs_raw['nft_collection'].isin(['treasures', 'legions', 'legions_genesis']), 'nft_name'] = \
@@ -314,34 +314,35 @@ def refresh_database(sql_credentials):
     marketplace_sales_df = build_marketplace_sales_table(marketplace_df_processed, magic_df)
     marketplace_listings_df = build_marketplace_listings_table(marketplace_df_processed, marketplace_sales_df)
 
-    # write data to s3
-    date = dt.datetime.now()
-    marketplace_txs_filename = f'marketplace-txs/marketplace_txs_raw_{date.year}_{date.month}_{date.day}_{date.hour}_{date.minute}.csv'
-    magic_txs_filename = f'magic-txs/magic_txs_raw_{date.year}_{date.month}_{date.day}_{date.hour}_{date.minute}.csv'
-    marketplace_df.to_csv('/tmp/tmp_marketplace_txs_df.csv')
-    magic_df.to_csv('/tmp/tmp_magic_txs_df.csv')
-    s3_resource.Object('treasure-marketplace-db', marketplace_txs_filename).upload_file('/tmp/tmp_marketplace_txs_df.csv')
-    s3_resource.Object('treasure-marketplace-db', magic_txs_filename).upload_file('/tmp/tmp_magic_txs_df.csv')
-    os.remove('/tmp/tmp_marketplace_txs_df.csv')
-    os.remove('/tmp/tmp_magic_txs_df.csv')
+    # # write data to s3
+    # date = dt.datetime.now()
+    # marketplace_txs_filename = f'marketplace-txs/marketplace_txs_raw_{date.year}_{date.month}_{date.day}_{date.hour}_{date.minute}.csv'
+    # magic_txs_filename = f'magic-txs/magic_txs_raw_{date.year}_{date.month}_{date.day}_{date.hour}_{date.minute}.csv'
+    # marketplace_df.to_csv('/tmp/tmp_marketplace_txs_df.csv')
+    # magic_df.to_csv('/tmp/tmp_magic_txs_df.csv')
+    # s3_resource.Object('treasure-marketplace-db', marketplace_txs_filename).upload_file('/tmp/tmp_marketplace_txs_df.csv')
+    # s3_resource.Object('treasure-marketplace-db', magic_txs_filename).upload_file('/tmp/tmp_magic_txs_df.csv')
+    # os.remove('/tmp/tmp_marketplace_txs_df.csv')
+    # os.remove('/tmp/tmp_magic_txs_df.csv')
 
-    # write data to sql
-    marketplace_sales_df.to_sql(
-        'marketplace_sales', 
-        con = connection, 
-        if_exists = 'append', 
-        chunksize = 1000,
-        index=False
-        )
-    marketplace_listings_df.to_sql(
-        'marketplace_listings', 
-        con = connection, 
-        if_exists = 'append', 
-        chunksize = 1000,
-        index=False
-        )
+    # # write data to sql
+    # marketplace_sales_df.to_sql(
+    #     'marketplace_sales', 
+    #     con = connection, 
+    #     if_exists = 'append', 
+    #     chunksize = 1000,
+    #     index=False
+    #     )
+    # marketplace_listings_df.to_sql(
+    #     'marketplace_listings', 
+    #     con = connection, 
+    #     if_exists = 'append', 
+    #     chunksize = 1000,
+    #     index=False
+    #     )
 
     connection.close()
     engine.dispose()
 
 refresh_database(mysql_credentials)
+

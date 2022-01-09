@@ -33,13 +33,6 @@ plot_color_palette = [
     '#1601ff',
 ]
 
-# define functions
-def q75(x):
-    return np.percentile(x, 75)
-
-def q25(x):
-    return np.percentile(x, 25)
-
 # define user inputs and attributes matching
 attributes_by_collection = {
     'treasures': ['nft_subcategory'],
@@ -53,6 +46,9 @@ attributes_by_collection = {
     'legions': ['nft_subcategory'],
     'extra_life': [np.nan]
 }
+
+collections = list(attributes_by_collection.keys()) + ['all']
+
 
 date_toggle_options = {
     '1 day': 1,
@@ -76,40 +72,90 @@ pricing_unit_options = {
     'ETH': 'sale_amt_eth'
 }
 
+dropdown_style = {
+    'color':'#FFFFFF',
+    'background-color':'#374251', 
+    'border-color':'rgb(229 231 235)', 
+    'border-radius':'0.375rem'
+}
+
 # connect to database
-sql_credential = os.path.join("static", "mysql_credential.json")
-with open(sql_credential) as f:
-    mysql_credentials = json.loads(f.read())
-engine = create_engine(
-    "mysql+pymysql://{user}:{pw}@{host}/{db}".format(
-    user=mysql_credentials['username'], 
-    pw=mysql_credentials['pw'], 
-    host=mysql_credentials['host'], 
-    db="treasure"
+def db_connect():
+    sql_credential = os.path.join("static", "mysql_credential.json")
+    with open(sql_credential) as f:
+        mysql_credentials = json.loads(f.read())
+    engine = create_engine(
+        "mysql+pymysql://{user}:{pw}@{host}/{db}".format(
+        user=mysql_credentials['username'], 
+        pw=mysql_credentials['pw'], 
+        host=mysql_credentials['host'], 
+        db="treasure"
+        )
     )
-)
-connection = engine.connect()
+    connection = engine.connect()
+    return connection
 
-# read in sales data
-marketplace_sales_list = []
-marketplace_sales_query = connection.execute('SELECT * FROM treasure.marketplace_sales')
-for row in marketplace_sales_query:
-    marketplace_sales_list.append(row)
-marketplace_sales = pd.DataFrame(marketplace_sales_list)
-marketplace_sales.columns=list(marketplace_sales_query.keys())
+# define functions
+def q75(x):
+    return np.percentile(x, 75)
 
-# read in token prices
-token_prices_list = []
-token_prices_query = connection.execute('SELECT * FROM treasure.token_prices')
-for row in token_prices_query:
-    token_prices_list.append(row)
-token_prices = pd.DataFrame(token_prices_list)
-token_prices.columns=list(token_prices_query.keys())
+def q25(x):
+    return np.percentile(x, 25)
 
-# read in attributes
+def get_sales(collection, lookback_window, display_currency, connection):
+    # read in sales data
+    min_datetime = dt.datetime.now() - dt.timedelta(days = lookback_window)
+    sales_query  = 'SELECT * FROM treasure.marketplace_sales WHERE datetime >= DATE("{}")'.format(min_datetime)
+    if collection != 'all':
+        sales_query = sales_query + 'AND nft_collection = "{}"'.format(collection)
+    marketplace_sales_list = []
+    marketplace_sales_query = connection.execute(sales_query)
+    for row in marketplace_sales_query:
+        marketplace_sales_list.append(row)
+    marketplace_sales = pd.DataFrame(marketplace_sales_list)
+    marketplace_sales.columns=list(marketplace_sales_query.keys())
+    marketplace_sales['date'] = marketplace_sales['datetime'].dt.date
+
+    # split out multiple-quantity sales into individual rows
+    multi_sales = marketplace_sales.loc[marketplace_sales['quantity']>1].copy()
+    marketplace_sales = marketplace_sales.loc[marketplace_sales['quantity']==1].copy()
+    multi_sales['sale_amt_magic'] = multi_sales['sale_amt_magic'] / multi_sales['quantity']
+    multi_sales = multi_sales.loc[multi_sales.index.repeat(multi_sales['quantity'])].reset_index(drop=True)
+    multi_sales['quantity'] = 1
+    marketplace_sales = pd.concat([marketplace_sales, multi_sales])
+
+        # read in token prices
+    if display_currency != 'MAGIC':
+        prices_query = 'SELECT * FROM treasure.token_prices WHERE datetime >= DATE("{}")'.format(min_datetime)
+        token_prices_list = []
+        token_prices_query = connection.execute(prices_query)
+        for row in token_prices_query:
+            token_prices_list.append(row)
+        token_prices = pd.DataFrame(token_prices_list)
+        token_prices.columns=list(token_prices_query.keys())
+
+        token_prices['date'] = token_prices['datetime'].dt.date
+        token_prices.rename(columns={'datetime':'token_price_datetime'}, inplace=True)
+
+        marketplace_sales = marketplace_sales.merge(token_prices, how='left', on='date')
+        marketplace_sales['token_price_sale_datetime_diff'] = marketplace_sales['datetime'] - marketplace_sales['token_price_datetime']
+        most_recent_token_prices = marketplace_sales.groupby('tx_hash',as_index=False).agg({'token_price_sale_datetime_diff':'min'})
+        marketplace_sales = marketplace_sales.merge(most_recent_token_prices, how='inner', on=['tx_hash', 'token_price_sale_datetime_diff'])
+        marketplace_sales['sale_amt_usd'] = marketplace_sales['sale_amt_magic'] * marketplace_sales['price_magic_usd']
+        marketplace_sales['sale_amt_eth'] = (marketplace_sales['sale_amt_magic'] * marketplace_sales['price_magic_usd']) / marketplace_sales['price_eth_usd']
+
+    return marketplace_sales
+
+# initialize data and attributes
+connection = db_connect()
+
+marketplace_sales = get_sales('all', 30, 'MAGIC', connection)
+
 attributes_dfs = {}
 for key, value in attributes_by_collection.items():
-    if ((not pd.isnull(value[0])) & (len(value) > 1)):
+    if (pd.isnull(value[0])):
+        continue
+    elif (len(value) > 1):
         tmp_attributes_lst = []
         tmp_attributes_query = connection.execute('SELECT * FROM treasure.attributes_{}'.format(key))
         for row in tmp_attributes_query:
@@ -118,29 +164,12 @@ for key, value in attributes_by_collection.items():
         tmp_attributes.columns=list(tmp_attributes_query.keys())
         tmp_attributes = tmp_attributes.loc[:, value + ['id']]
         attributes_dfs[key] = tmp_attributes
+    else:
+        tmp_attributes = marketplace_sales.loc[marketplace_sales['nft_collection']==key, value + ['nft_id']].drop_duplicates()
+        tmp_attributes.rename(columns={'nft_id':'id'}, inplace=True)
+        attributes_dfs[key] = tmp_attributes
 
 connection.close()
-engine.dispose()
-
-collections = list(marketplace_sales.nft_collection.unique()) + ['all']
-
-marketplace_sales['date'] = marketplace_sales['datetime'].dt.date
-token_prices['date'] = token_prices['datetime'].dt.date
-token_prices.rename(columns={'datetime':'token_price_datetime'}, inplace=True)
-
-marketplace_sales = marketplace_sales.merge(token_prices, how='left', on='date')
-marketplace_sales['token_price_sale_datetime_diff'] = marketplace_sales['datetime'] - marketplace_sales['token_price_datetime']
-most_recent_token_prices = marketplace_sales.groupby('tx_hash',as_index=False).agg({'token_price_sale_datetime_diff':'min'})
-marketplace_sales = marketplace_sales.merge(most_recent_token_prices, how='inner', on=['tx_hash', 'token_price_sale_datetime_diff'])
-marketplace_sales['sale_amt_usd'] = marketplace_sales['sale_amt_magic'] * marketplace_sales['price_magic_usd']
-marketplace_sales['sale_amt_eth'] = (marketplace_sales['sale_amt_magic'] * marketplace_sales['price_magic_usd']) / marketplace_sales['price_eth_usd']
-
-dropdown_style = {
-    'color':'#FFFFFF',
-    'background-color':'#374251', 
-    'border-color':'rgb(229 231 235)', 
-    'border-radius':'0.375rem'
-}
 
 # create app layout
 app.layout = html.Div([
@@ -217,20 +246,16 @@ app.layout = html.Div([
     Input('collection_dropdown', 'value'),
     State('attributeDropdownContainer', 'children'))
 def display_dropdowns(collection_value, children):
-    marketplace_sales_filtered = marketplace_sales.copy()
     if collection_value=='all':
         id_columns = [np.nan]
     else:
         id_columns = attributes_by_collection[collection_value]
         if 'is_one_of_one' in id_columns:
             id_columns.remove('is_one_of_one')
-        marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered['nft_collection']==collection_value]
-    if len(id_columns) > 1:
-        attributes_df = attributes_dfs[collection_value]
-        attributes_df = attributes_df.fillna('N/A')
-        marketplace_sales_filtered = marketplace_sales_filtered.merge(attributes_df, how='inner',left_on='nft_id', right_on='id')
     children = []
     if (not pd.isnull(id_columns[0])): 
+        attributes_df = attributes_dfs[collection_value]
+        attributes_df = attributes_df.fillna('N/A')
         for attribute in id_columns:
             new_dropdown = html.Div([
                 html.Div(
@@ -245,7 +270,7 @@ def display_dropdowns(collection_value, children):
                         'type':'filter_dropdown',
                         'index':attribute
                     },
-                    options=[{'label': i, 'value': i} for i in list(marketplace_sales_filtered[attribute].unique()) + ['any']],
+                    options=[{'label': i, 'value': i} for i in list(attributes_df[attribute].unique()) + ['any']],
                     value='any',
                     clearable=False,
                     style=dropdown_style
@@ -298,18 +323,16 @@ def filter_attributes_gender(filter_value, collection_value, filter_id):
         gender_value = 'female'
     else:
         gender_value = 'any'
-    marketplace_sales_filtered = marketplace_sales.copy()
     attributes_df = attributes_dfs[collection_value]
     attributes_df = attributes_df.fillna('N/A')
-    marketplace_sales_filtered = marketplace_sales_filtered.merge(attributes_df, how='inner',left_on='nft_id', right_on='id')
-    marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered['gender'].isin([gender_value] if gender_value!='any' else marketplace_sales_filtered['gender'].unique())].copy()
+    attributes_df_filtered = attributes_df.loc[attributes_df['gender'].isin([gender_value] if gender_value!='any' else attributes_df['gender'].unique())].copy()
 
     options = []
     for item in filter_id:
         if item['index']=='gender':
             options.append([{'label': i, 'value': i} for i in list(attributes_df[item['index']].unique()) + ['any']])
         else:
-            options.append([{'label': i, 'value': i} for i in list(marketplace_sales_filtered[item['index']].unique()) + ['any']])
+            options.append([{'label': i, 'value': i} for i in list(attributes_df_filtered[item['index']].unique()) + ['any']])
     return options
 
 @app.callback(
@@ -328,7 +351,15 @@ def filter_attributes_gender(filter_value, collection_value, filter_id):
     Input('time_interval', 'value'),
     )
 def update_stats(collection_value, value_columns, filter_columns, pricing_unit_value, time_window_value, outlier_toggle_value, time_interval_value):
-    marketplace_sales_filtered = marketplace_sales.copy()
+    connection = db_connect()
+
+    pricing_unit_label = 'MAGIC'
+    if pricing_unit_value == 'sale_amt_usd':
+        pricing_unit_label = 'USD'
+    if pricing_unit_value == 'sale_amt_eth':
+        pricing_unit_label = 'ETH'
+    
+    marketplace_sales_filtered = get_sales(collection_value, time_window_value, pricing_unit_label, connection)
     if collection_value=='all':
         id_columns = [np.nan]
     else:
@@ -361,12 +392,6 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
         marketplace_sales_filtered = marketplace_sales_filtered.merge(outlier_calc, how='inner', on='date')
         marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered[pricing_unit_value] <= marketplace_sales_filtered['upper']]
         marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered[pricing_unit_value] >= marketplace_sales_filtered['lower']]
-
-    pricing_unit_label = 'MAGIC'
-    if pricing_unit_value == 'sale_amt_usd':
-        pricing_unit_label = 'USD'
-    if pricing_unit_value == 'sale_amt_eth':
-        pricing_unit_label = 'ETH'
 
     marketplace_sales_filtered['nft_collection_formatted'] = [x.title().replace("_", " ")  for x in marketplace_sales_filtered['nft_collection']]
     marketplace_sales_filtered.loc[pd.isnull(marketplace_sales_filtered['nft_subcategory']), 'nft_subcategory'] = ''
@@ -453,7 +478,6 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
     fig2['layout']['yaxis2']['showgrid'] = False
     fig2['layout']['yaxis2']['title'] = 'Avg Sale Amount'
 
-
     return '{:,.0f}'.format(sales),\
             '{:,.2f}'.format(min_price),\
             '{:,.2f}'.format(avg_price),\
@@ -461,6 +485,8 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
             fig1,\
             fig2
 
+    connection.close()
+
 if __name__ == '__main__':
-    # app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
-    application.run(debug=False, port=8080)
+    app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
+    # application.run(debug=False, port=8080)
