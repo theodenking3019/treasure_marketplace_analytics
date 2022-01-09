@@ -150,7 +150,7 @@ def get_sales(collection, lookback_window, display_currency, connection):
 # initialize data and attributes
 connection = db_connect()
 
-marketplace_sales = get_sales('all', 30, 'MAGIC', connection)
+marketplace_sales = get_sales('all', 7, 'MAGIC', connection)
 
 attributes_dfs = {}
 for key, value in attributes_by_collection.items():
@@ -205,7 +205,7 @@ app.layout = html.Div([
                 dcc.Dropdown(
                     id='time_window',
                     options=[{'label': key, 'value': value} for key, value in date_toggle_options.items()],
-                    value=30,
+                    value=7,
                     clearable=False,
                     style=dropdown_style,
                     className='headlineDropdown')],
