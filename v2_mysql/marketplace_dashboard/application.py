@@ -3,6 +3,7 @@ import dash
 from dash import dcc
 from dash import html
 from dash.dependencies import Input, Output, State, MATCH, ALL
+from dash.exceptions import PreventUpdate
 import dash_daq as daq
 import dash_bootstrap_components as dbc
 import plotly.express as px
@@ -11,17 +12,45 @@ import plotly.graph_objects as go
 
 import base64
 import datetime as dt
-import os
 import json
 import numpy as np
+import os
 import pandas as pd
 import statsmodels.api as sm
 from sqlalchemy import create_engine
+import re
 
 app = dash.Dash(
     __name__, 
     title='Treasure NFT Sales',
     meta_tags=[{'name': 'viewport', 'content': 'width=device-width, initial-scale=1.0'}])
+
+app.index_string = """<!DOCTYPE html>
+<html>
+    <head>
+        <!-- Global site tag (gtag.js) - Google Analytics -->
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-DR5F0RFK4C"></script>
+        <script>
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+        
+          gtag('config', 'G-DR5F0RFK4C');
+        </script>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>"""
 
 application = app.server
 
@@ -114,6 +143,8 @@ def get_sales(collection, lookback_window, display_currency, connection):
     for row in marketplace_sales_query:
         marketplace_sales_list.append(row)
     marketplace_sales = pd.DataFrame(marketplace_sales_list)
+    if len(marketplace_sales)==0:
+        return pd.DataFrame()
     marketplace_sales.columns=list(marketplace_sales_query.keys())
     marketplace_sales['date'] = marketplace_sales['datetime'].dt.date
 
@@ -174,6 +205,8 @@ connection.close()
 
 # create app layout
 app.layout = html.Div([
+    dcc.Location(id='url-input', refresh=False),
+    dcc.Location(id='url-output', refresh=False),
     html.Div([
         html.Img(id='treasureLogo', src=app.get_asset_url('img/treasure_logo.png')),
         html.H1('Treasure NFT Sales', id='bannerTitle')
@@ -289,12 +322,18 @@ def display_dropdowns(collection_value, children):
 @app.callback(
     Output({'type': 'filter_dropdown', 'index': ALL}, 'value'),
     Input('attributeResetButton', 'n_clicks'),
-    State({'type': 'filter_dropdown', 'index': ALL}, 'value')
+    State({'type': 'filter_dropdown', 'index': ALL}, 'id'),
+    Input('url-input', 'pathname')
 )
-def reset_attributes(reset, filter_value):
+def reset_attributes(reset, id_value, url_path):
+    ctx = dash.callback_context
+
     reset_val_list = []
-    for val in filter_value:
-        reset_val_list.append('any')
+    for id in id_value:
+        if ctx.triggered[0]['prop_id']=='attributeResetButton.n_clicks':
+            reset_val_list.append('any')
+        else:
+            reset_val_list.append(re.findall("(?<={}=)[a-zA-Z10-9%/_-]+".format(id['index']), url_path)[0].replace('%20', ' '))
     return reset_val_list
 
 # function to update the attribute labels
@@ -317,7 +356,7 @@ def display_output(id):
 )
 def filter_attributes_gender(filter_value, collection_value, filter_id):
     if 'gender' not in  attributes_by_collection[collection_value]:
-        raise('Gender is not an attribute')
+        raise PreventUpdate
     if 'male' in filter_value:
         gender_value = 'male'
     elif 'female' in filter_value:
@@ -336,6 +375,7 @@ def filter_attributes_gender(filter_value, collection_value, filter_id):
             options.append([{'label': i, 'value': i} for i in list(attributes_df_filtered[item['index']].unique()) + ['any']])
     return options
 
+# callback to filter data based on inputs
 @app.callback(
     Output('n_sales', 'children'),
     Output('min_sale', 'children'),
@@ -343,6 +383,7 @@ def filter_attributes_gender(filter_value, collection_value, filter_id):
     Output('volume', 'children'),
     Output('sales_scatter', 'figure'),
     Output('volume_floor_prices', 'figure'),
+    Output('url-output', 'pathname'),
     Input('collection_dropdown', 'value'),
     Input({'type': 'filter_dropdown', 'index': ALL}, 'value'),
     State({'type': 'filter_dropdown', 'index': ALL}, 'id'),
@@ -359,8 +400,12 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
         pricing_unit_label = 'USD'
     if pricing_unit_value == 'sale_amt_eth':
         pricing_unit_label = 'ETH'
+
+    new_url = "/collection={}".format(collection_value)
     
     marketplace_sales_filtered = get_sales(collection_value, time_window_value, pricing_unit_label, connection)
+    if len(marketplace_sales_filtered)==0:
+        marketplace_sales_filtered = marketplace_sales.loc[marketplace_sales['nft_collection']=='000000'] # cruft to allow us to take the column names
     if collection_value=='all':
         id_columns = [np.nan]
     else:
@@ -374,12 +419,16 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
     if filter_columns:
         for filt, val in zip(filter_columns, value_columns):
             marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered[filt['index']].isin([val]) if val!='any' else marketplace_sales_filtered[filt['index']].isin(marketplace_sales_filtered[filt['index']].unique())]
+            new_url = new_url + '&{}={}'.format(filt['index'], val)
     marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered['datetime'] >= pd.to_datetime(dt.datetime.now() - dt.timedelta(days = time_window_value))]
+    new_url = new_url + '&lookback={}'.format(time_window_value)
 
     sales = marketplace_sales_filtered[pricing_unit_value].count()
     min_price = marketplace_sales_filtered[pricing_unit_value].min()
     avg_price = marketplace_sales_filtered[pricing_unit_value].mean()
     volume = marketplace_sales_filtered[pricing_unit_value].sum()
+    new_url = new_url + '&priceunit={}'.format(pricing_unit_value)
+
 
     if outlier_toggle_value:
         # use daily IQR
@@ -393,6 +442,10 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
         marketplace_sales_filtered = marketplace_sales_filtered.merge(outlier_calc, how='inner', on='date')
         marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered[pricing_unit_value] <= marketplace_sales_filtered['upper']]
         marketplace_sales_filtered = marketplace_sales_filtered.loc[marketplace_sales_filtered[pricing_unit_value] >= marketplace_sales_filtered['lower']]
+        
+        new_url = new_url + '&outliers=true'
+    else:
+        new_url = new_url + '&outliers=false'
 
     marketplace_sales_filtered['nft_collection_formatted'] = [x.title().replace("_", " ")  for x in marketplace_sales_filtered['nft_collection']]
     marketplace_sales_filtered.loc[pd.isnull(marketplace_sales_filtered['nft_subcategory']), 'nft_subcategory'] = ''
@@ -444,6 +497,8 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
     marketplace_sales_agg.columns = marketplace_sales_agg.columns.droplevel(0)
     marketplace_sales_agg = marketplace_sales_agg.rename_axis(None, axis=1)
 
+    new_url = new_url + '&timeinterval={}'.format(time_interval_value)
+
     fig2 = make_subplots(specs=[[{"secondary_y": True}]])
 
     fig2.add_scatter(x=marketplace_sales_agg.index,
@@ -479,14 +534,31 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
     fig2['layout']['yaxis2']['showgrid'] = False
     fig2['layout']['yaxis2']['title'] = 'Avg Sale Amount'
 
+    connection.close()
+
     return '{:,.0f}'.format(sales),\
             '{:,.2f}'.format(min_price),\
             '{:,.2f}'.format(avg_price),\
             '{:,.2f}'.format(volume),\
             fig1,\
-            fig2
+            fig2,\
+            new_url
 
-    connection.close()
+# callback to filter data based on URL
+@app.callback(
+    Output('collection_dropdown', 'value'),
+    Output('pricing_unit', 'value'),
+    Output('time_window', 'value'),
+    Output('outlier_toggle', 'value'),
+    Output('time_interval', 'value'),
+    Input('url-input', 'pathname')
+    )
+def update_inputs(url_path):
+    return re.findall("(?<=collection=)[a-z0-9_]+", url_path)[0],\
+        re.findall("(?<=priceunit=)[a-z0-9_]+", url_path)[0],\
+        int(re.findall("(?<=lookback=)[a-z0-9_]+", url_path)[0]),\
+        True if re.findall("(?<=outliers=)[a-z0-9_]+", url_path)[0]=='true' else False,\
+        re.findall("(?<=timeinterval=)[a-z0-9_]+", url_path)[0]
 
 if __name__ == '__main__':
     # app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
