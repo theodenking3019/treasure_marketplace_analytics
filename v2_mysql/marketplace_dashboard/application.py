@@ -135,11 +135,11 @@ def q25(x):
 def get_sales(collection, lookback_window, display_currency, connection):
     # read in sales data
     min_datetime = dt.datetime.now() - dt.timedelta(days = lookback_window)
-    sales_query  = 'SELECT tx_hash, datetime, sale_amt_magic, nft_collection, nft_id, nft_subcategory, quantity FROM treasure.marketplace_sales WHERE datetime >= DATE("{}")'.format(min_datetime)
+    sales_query  = 'SELECT tx_hash, datetime, sale_amt_magic, nft_collection, nft_id, nft_subcategory, quantity FROM treasure.marketplace_sales WHERE datetime >= %(min_datetime)s'
     if collection != 'all':
-        sales_query = sales_query + 'AND nft_collection = "{}"'.format(collection)
+        sales_query = sales_query + 'AND nft_collection = %(collection)s'
     marketplace_sales_list = []
-    marketplace_sales_query = connection.execute(sales_query)
+    marketplace_sales_query = connection.execute(sales_query, {'min_datetime': min_datetime, 'collection': collection})
     for row in marketplace_sales_query:
         marketplace_sales_list.append(row)
     marketplace_sales = pd.DataFrame(marketplace_sales_list)
@@ -156,11 +156,11 @@ def get_sales(collection, lookback_window, display_currency, connection):
     multi_sales['quantity'] = 1
     marketplace_sales = pd.concat([marketplace_sales, multi_sales])
 
-        # read in token prices
+    # read in token prices
     if display_currency != 'MAGIC':
-        prices_query = 'SELECT * FROM treasure.token_prices WHERE datetime >= DATE("{}")'.format(min_datetime)
+        prices_query = 'SELECT * FROM treasure.token_prices WHERE datetime >= %(min_datetime)s'
         token_prices_list = []
-        token_prices_query = connection.execute(prices_query)
+        token_prices_query = connection.execute(prices_query, {'min_datetime': min_datetime})
         for row in token_prices_query:
             token_prices_list.append(row)
         token_prices = pd.DataFrame(token_prices_list)
@@ -561,5 +561,5 @@ def update_inputs(url_path):
         re.findall("(?<=timeinterval=)[a-z0-9_]+", url_path)[0]
 
 if __name__ == '__main__':
-    # app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
-    application.run(debug=False, port=8080)
+    app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
+    # application.run(debug=False, port=8080)
