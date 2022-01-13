@@ -135,7 +135,7 @@ def q25(x):
 def get_sales(collection, lookback_window, display_currency, connection):
     # read in sales data
     min_datetime = dt.datetime.now() - dt.timedelta(days = lookback_window)
-    sales_query  = 'SELECT datetime, sale_amt_magic, nft_collection, nft_id, nft_subcategory, quantity FROM treasure.marketplace_sales WHERE datetime >= DATE("{}")'.format(min_datetime)
+    sales_query  = 'SELECT tx_hash, datetime, sale_amt_magic, nft_collection, nft_id, nft_subcategory, quantity FROM treasure.marketplace_sales WHERE datetime >= DATE("{}")'.format(min_datetime)
     if collection != 'all':
         sales_query = sales_query + 'AND nft_collection = "{}"'.format(collection)
     marketplace_sales_list = []
