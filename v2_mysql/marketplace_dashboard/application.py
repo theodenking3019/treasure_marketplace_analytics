@@ -406,6 +406,8 @@ def update_stats(collection_value, value_columns, filter_columns, pricing_unit_v
     marketplace_sales_filtered = get_sales(collection_value, time_window_value, pricing_unit_label, connection)
     if len(marketplace_sales_filtered)==0:
         marketplace_sales_filtered = marketplace_sales.loc[marketplace_sales['nft_collection']=='000000'] # cruft to allow us to take the column names
+        marketplace_sales_filtered['sale_amt_eth'] = np.nan
+        marketplace_sales_filtered['sale_amt_usd'] = np.nan
     if collection_value=='all':
         id_columns = [np.nan]
     else:
@@ -561,5 +563,5 @@ def update_inputs(url_path):
         re.findall("(?<=timeinterval=)[a-z0-9_]+", url_path)[0]
 
 if __name__ == '__main__':
-    app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
-    # application.run(debug=False, port=8080)
+    # app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
+    application.run(debug=False, port=8080)
