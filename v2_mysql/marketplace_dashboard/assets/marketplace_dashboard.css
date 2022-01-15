@@ -79,9 +79,10 @@ body {
 }
 
 #attributeDropdownContainer {
-  display: flex;
-  justify-content: space-evenly;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  justify-items: center;
+  align-items: center;
   margin: 2% 2% 0;
 }
 
@@ -170,12 +171,12 @@ body {
 }
 
 #attributeResetButton {
-  padding: 20%
+  padding: 20%;
 }
 
-/* .Select-value-label {
-  color:#000000;
-} */
+#attributeResetContainer {
+  justify-self: center;
+}
 
 @media (max-width: 800px) {
 
@@ -235,4 +236,9 @@ body {
   .js-plotly-plot {
      margin: 100px 0px;
   }
+
+  #attributeDropdownContainer {
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  }
+  
 }

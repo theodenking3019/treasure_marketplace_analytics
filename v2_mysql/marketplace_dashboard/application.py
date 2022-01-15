@@ -314,7 +314,7 @@ def display_dropdowns(collection_value, children):
         button = html.Div([
             html.Div('blank', id='buttonLabel'),
             html.Div(html.Button('Reset',id='attributeResetButton', n_clicks=0, style=dropdown_style))
-        ])
+        ], id = 'attributeResetContainer')
         children.append(button)
     return children
 
@@ -563,5 +563,5 @@ def update_inputs(url_path):
         re.findall("(?<=timeinterval=)[a-z0-9_]+", url_path)[0]
 
 if __name__ == '__main__':
-    # app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
-    application.run(debug=False, port=8080)
+    app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
+    # application.run(debug=False, port=8080)
