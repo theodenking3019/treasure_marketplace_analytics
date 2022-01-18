@@ -1,0 +1,169 @@
+@font-face {
+    font-family: goshaSans;
+    src: url(assets/fonts/gosha-sans-cufonfonts/GoshaSansRegular.otf);
+  }
+  
+html {
+  font-family: monospace;
+  background-color: #111827;
+  font-size: 1.15vmax;
+}
+
+body {
+  margin: 0;
+  position: relative;
+  color: #FFFFFF;
+} 
+
+header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: black;
+    text-align: center;
+    padding: 0 0 0.5%;
+    font-family: goshaSans, serif;
+    border-color: #000000 black #d60037 black;
+    border-style: solid;
+    border-width: thin;
+    color: #FFFFFF;
+    font-size: 1.5vmax;
+    font-weight: 200;
+    line-height: 1.4;
+}
+
+#treasureLogo {
+  max-height: 50px;
+}
+  
+#headerTitle {
+  margin: 0% 0% 0% 1%;
+}
+
+#instructions {
+    font-size: 170%;
+    text-align: center;
+}
+
+#form_group {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 2% 0 0.5%;
+}
+
+#bag_id_input {
+    font-size: .875rem;
+    line-height: 1.25rem;
+    background-color: rgb(156 163 175/.5);
+    border-color: rgb(156 163 175/var(--tw-border-opacity));
+    --tw-border-opacity: 1;
+    border-width: 2px;
+    border-radius: 0.375rem;
+    flex-grow: 1;
+    max-width: 15vw;
+    border-style:solid;
+    color: white;
+    font-family: inherit;
+}
+
+#submit {
+    font-size: .875rem;
+    line-height: 1.25rem;
+    background-color: rgb(156 163 175/.5);
+    border-color: rgb(156 163 175/var(--tw-border-opacity));
+    border-width: 2px;
+    border-radius: 0.375rem;
+    max-width: 200px;
+    color: white;
+    font-family: inherit;
+    margin: 0 10px;
+}
+
+::placeholder {
+    color: white;
+  }
+
+#treasure_grid_container {
+    display:flex;
+    flex-direction: column;
+}
+
+.gridRow {
+    display: flex;
+    align-items: center;
+    margin: 0 15%;
+    column-gap: 5px;
+}
+
+.grid_child {
+    text-align: right;
+    min-width: 20%;
+}
+
+.tableEncapsulator {
+    border-color: #111827 #111827 rgb(156 163 175) #111827;
+    border-style: solid;
+    border-width: thin;
+    margin-bottom: 7.5px;
+}
+
+.odd {
+    background: #1F2937;
+}
+
+.treasure_img {
+    max-width: 40px;
+    width: 70%;
+    min-width: 25px;
+    height: auto;
+    align-self: center;
+}
+
+.bold_row {
+    font-size: 130%;
+    font-weight: 300%;
+}
+
+#footnote  {
+    font-size: 80%;
+    margin: 0.5% 21%;
+    text-align: justify;
+}
+
+@media (max-width: 800px) {
+    #treasureLogo {
+        max-height: 30px;
+      }
+
+    html {
+      font-family: monospace;
+      background-color: #111827;
+      font-size: 1.1vmax;
+    }
+
+    header {
+        font-size: 1vmax;
+    }
+
+    .gridRow {
+        margin: 0;
+    }
+
+    #footnote  {
+        margin: 0% 3%;
+    }
+
+    .treasure_img {
+        min-width: 15px;
+    }
+
+    .bold_row {
+        font-size: 100%;
+    }
+
+    #treasure_grid_container {
+        margin: 8% 0;
+    }
+      
+}

@@ -146,3 +146,6 @@ historic_eth_prices.json
 populate_magic_price_table.py
 *.zip
 fix_incorrect_wallet_buyers_20211221.py
+infura_key.json
+treasure_abi.json
+instance/

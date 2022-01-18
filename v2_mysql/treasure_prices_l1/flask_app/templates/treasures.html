@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block head %}
+
+{% endblock %}
+
+{% block preform %}
+
+{% endblock %}
+
+{% block body %}
+<div id="treasure_grid_container">
+    <div class="gridRow tableEncapsulator">
+        <p class="bold_row grid_child">Bag #{{ bag_id }}</p>
+        <p class="bold_row grid_child">Treasure</p>
+        <p class="bold_row grid_child">Price MAGIC</p>
+        <p class="bold_row grid_child">Price ETH</p>
+    </div>
+    {% for i, object in enumerate(zip(item_list, price_list_magic, price_list_eth)) %}
+    <div class="gridRow {{ 'even' if i % 2 == 0 else 'odd' }}">
+        <div class="treasure_img_container grid_child">
+            <img class="treasure_img" src="{{ url_for('static', filename='assets/img/{}.gif'.format(object[0])) }}" ,
+                alt="{{ '{}'.format(object[0]) }}">
+        </div>
+        <p class="grid_child">{{ object[0] }}</p>
+        <p class="grid_child">{{ object[1] }}</p>
+        <p class="grid_child">{{ object[2] }}</p>
+    </div>
+    {% endfor %}
+    <div class='gridRow tableEncapsulator'>
+        <p class="total_row bold_row grid_child"></p>
+        <p class="total_row bold_row grid_child">Total</p>
+        <p class="total_row bold_row grid_child">{{ total_price_magic }}</p>
+        <p class="total_row bold_row grid_child">{{ total_price_eth }}</p>
+    </div>
+</div>
+<p id="footnote">Valuation based on most recent NFT sale on the Treasure Marketplace. Please note that L1 treasure
+    bags must be migrated to Arbitrum before the can be sold on the Marketplace, and the date of the next migration
+    is unnanounced. Prices are not guaranteed to stay the same between the time of the valuation and the next
+    migration. Additionally, migration will likely require a gas fee and selling on the Marketplace will incur a 5%
+    royalty fee, neither of which are accounted for here.</p>
+{% endblock %}

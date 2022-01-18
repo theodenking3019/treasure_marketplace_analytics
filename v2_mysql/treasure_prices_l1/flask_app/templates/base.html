@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='assets/favicon.ico') }}">
+    <title>L1 Treasure Values</title>
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+    <header>
+        <img id="treasureLogo" src="{{ url_for('static', filename='assets/img/treasure_logo.png') }}" ,
+            alt="Treasure Logo">
+        <h1 id="headerTitle">Treasure: L1 Bag Valuations</h1>
+    </header>
+    {% block preform %}{% endblock %}
+    <form id='form_group' action="/" method="POST">
+        <input type="number" name="bag_id" id="bag_id_input" min="1" max="8999" placeholder="Bag ID..." required>
+        <input id='submit' type="submit" value="Search">
+    </form>
+    {% block body %}{% endblock %}
+</body>
+
+</html>
