@@ -10,5 +10,8 @@
     "life": "03956c81a51feaed98d7a678d53f44b9166c8ed66",
     "extra_life": "021e1969884d477afd2afd4ad668864a0eebd644c",
     "quest_keys": "0f0a35ba261ece4fc12870e5b7b9e7790202ef9b5",
-    "smol_bodies": "017dacad7975960833f374622fad08b90ed67d1b5"
+    "smol_bodies": "017dacad7975960833f374622fad08b90ed67d1b5",
+    "magic_genesis_mine": "0xdf19f1216aa406df8bc585246bee7d96933f285f",
+    "treasure_staking_contract": "0xd300322832765fee6b910d314f2c2d879427226f",
+    "legions_genesis_post_pilgrimage": "0fE8c1ac365bA6780AEc5a985D989b327C27670A1"
 }

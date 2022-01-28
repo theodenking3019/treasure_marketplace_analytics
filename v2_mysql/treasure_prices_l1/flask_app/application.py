@@ -9,6 +9,7 @@ engine = sqlalchemy.create_engine(application.config['SQLALCHEMY_DATABASE_URI'])
 db_session = sqlalchemy.orm.scoped_session(sqlalchemy.orm.sessionmaker(autocommit=False,
                                                                         autoflush=False,
                                                                         bind=engine))
+
 Base = sqlalchemy.ext.declarative.declarative_base()
 Base.query = db_session.query_property()
 
@@ -59,7 +60,10 @@ def index():
 @application.route("/<bagID>", methods = ["GET"])
 def treasures(bagID):
         # Get items in treasure bag
-        itemList = db_session.query(L1Treasures).filter(L1Treasures.id==bagID).first().__dict__['item_list'].split(",")
+        try:
+            itemList = db_session.query(L1Treasures).filter(L1Treasures.id==bagID).first().__dict__['item_list'].split(",")
+        except:
+            db_session.rollback()
         itemList = [item.replace("'", '').replace('[','').replace(']','').strip() for item in itemList]
         itemList = [itemMappings[item] if item in itemMappings.keys() else item for item in itemList]
 
@@ -76,8 +80,10 @@ def treasures(bagID):
         totalPriceEth = sum(priceListEth)
         priceListMagic = [str(round(price)) for price in priceListMagic]
         priceListEth = [str(round(price,2)) for price in priceListEth]
-
-        db_session.close()
+        try:
+            db_session.close()
+        except:
+            db_session.rollback()
 
         return render_template(
             "treasures.html", 
