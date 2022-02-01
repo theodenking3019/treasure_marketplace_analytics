@@ -1,7 +1,3 @@
-# This script pulls raw txs from the ArbiScan API, uploads them to s3,
-# and writes the resutls to relevant SQL tables.
-# We'll use it to automate db refreshes using AWS Lambda.
-
 import datetime as dt
 import io
 import json
@@ -18,8 +14,8 @@ from ratelimit import limits, sleep_and_retry
 
 ONE_SECOND = 1
 DAO_WALLET = '0xdb6ab450178babcf0e467c1f3b436050d907e233'
-os.chdir('v2_mysql/build_database_test')
 DAO_ROYALTY_PCT = 0.05
+os.chdir('v2_mysql/build_database_test')
 
 tz = pytz.timezone('UTC')
 
@@ -84,9 +80,14 @@ def get_contract_transactions(arbiscan_api_key, contract_address, start_block=0,
 
 def pull_arbiscan_data(arbiscan_api_key, method_ids, start_block=0, latest_tx_hashes=[]):
     # read in marketplace txs
-    marketplace_txs = get_contract_transactions(arbiscan_api_key, contract_addresses['treasure_marketplace'], start_block=start_block)
-    marketplace_txs_df = pd.DataFrame.from_dict(marketplace_txs["result"])
-    print(marketplace_txs_df.hash[0])
+    marketplace_txs_old_contract = get_contract_transactions(arbiscan_api_key, contract_addresses['treasure_marketplace'], start_block=start_block)
+    marketplace_txs_new_contract = get_contract_transactions(arbiscan_api_key, contract_addresses['treasure_marketplace_2'], start_block=start_block)
+    marketplace_txs_old_df = pd.DataFrame.from_dict(marketplace_txs_old_contract["result"])
+    marketplace_txs_new_df = pd.DataFrame.from_dict(marketplace_txs_new_contract["result"])
+    marketplace_txs_old_df['contract'] = contract_addresses['treasure_marketplace']
+    marketplace_txs_new_df['contract'] = contract_addresses['treasure_marketplace_2']
+    marketplace_txs_df = pd.concat([marketplace_txs_old_df, marketplace_txs_new_df])
+
     # filter txs against already existing records
     marketplace_txs_df = marketplace_txs_df.loc[~marketplace_txs_df['hash'].isin(latest_tx_hashes)]
 
@@ -113,11 +114,12 @@ def pull_arbiscan_data(arbiscan_api_key, method_ids, start_block=0, latest_tx_ha
 
 def process_marketplace_txs(marketplace_txs_raw, method_ids, contract_addresses, treasure_ids_numeric):
     marketplace_txs_raw["tx_type"] = [x[:10] for x in marketplace_txs_raw["input"]]
+    marketplace_txs_raw['to'] = ['0x' + x[162:212] for x in marketplace_txs_raw["input"]]
     marketplace_txs_raw["tx_type"] = marketplace_txs_raw["tx_type"].map(method_ids)
     marketplace_txs_raw = marketplace_txs_raw.loc[~pd.isnull(marketplace_txs_raw["tx_type"])] # null transactions are all whitelisting of certain accounts before marketplace launch
     marketplace_txs_raw['datetime'] = [dt.datetime.fromtimestamp(int(x), tz) for x in marketplace_txs_raw['timeStamp']]
     marketplace_txs_raw['gas_fee_eth'] = (marketplace_txs_raw['gasPrice'].astype('int64') * 1e-9 * marketplace_txs_raw['gasUsed'].astype(int) * 1e-9) / 2.0
-    marketplace_txs_raw['nft_collection'] = [contract_addresses[x[33:74]] for x in marketplace_txs_raw['input']] # works for both types of txs
+    marketplace_txs_raw['nft_collection'] = [contract_addresses[x[33:74]] if x[33:74] in contract_addresses.keys() else x[33:74] for x in marketplace_txs_raw['input']] # works for both types of txs
     marketplace_txs_raw['nft_id'] = [int(x[133:138], 16) for x in marketplace_txs_raw['input']] # also works for all types of txs
     marketplace_txs_raw.loc[marketplace_txs_raw['nft_collection'].isin(['treasures', 'legions', 'legions_genesis']), 'nft_name'] = \
         marketplace_txs_raw.loc[marketplace_txs_raw['nft_collection'].isin(['treasures', 'legions', 'legions_genesis']), 'nft_id'].map(treasure_ids_numeric)
@@ -149,7 +151,8 @@ def process_marketplace_txs(marketplace_txs_raw, method_ids, contract_addresses,
         'nft_name',
         'nft_subcategory',
         'quantity',
-        'tx_type'
+        'tx_type',
+        'contract'
     ]
 
     return marketplace_txs_raw.loc[:,columns_to_keep].copy()
@@ -159,26 +162,26 @@ def build_marketplace_sales_table(marketplace_txs, magic_txs):
 
     # join magic txs table to get transaction values
     magic_txs['value'] = magic_txs['value'].astype("float64") * 1e-18
+
     mkt_magic_merged_table = magic_txs.merge(marketplace_sales, how='inner', on='hash')
     mkt_magic_merged_table = mkt_magic_merged_table.groupby('hash',as_index=False).agg({'value':["min", "max", "sum"]})
     mkt_magic_merged_table.columns = mkt_magic_merged_table.columns.droplevel()
     mkt_magic_merged_table.rename(columns={'':'hash','min':'dao_amt_received_magic', 'max':'seller_amt_received_magic', 'sum':'sale_amt_magic'}, inplace=True)
-    # for sales where we only have one of the txs, assume it is the seller amount received
-    # TODO: make this more intelligent by using the actual dao wallet address
     mkt_magic_merged_table.loc[mkt_magic_merged_table['dao_amt_received_magic']==mkt_magic_merged_table['seller_amt_received_magic'], 'sale_amt_magic'] = \
         mkt_magic_merged_table.loc[mkt_magic_merged_table['dao_amt_received_magic']==mkt_magic_merged_table['seller_amt_received_magic'], 'seller_amt_received_magic'] / 0.95
     mkt_magic_merged_table.loc[mkt_magic_merged_table['dao_amt_received_magic']==mkt_magic_merged_table['seller_amt_received_magic'], 'dao_amt_received_magic'] = \
         mkt_magic_merged_table.loc[mkt_magic_merged_table['dao_amt_received_magic']==mkt_magic_merged_table['seller_amt_received_magic'], 'sale_amt_magic'] * 0.05
 
     marketplace_sales = marketplace_sales.merge(mkt_magic_merged_table, how='inner', on='hash')
-    marketplace_sales.drop('to', axis=1, inplace=True)
-    to_wallets = magic_txs.loc[magic_txs['to']!=DAO_WALLET,['hash','to']].drop_duplicates('hash')
-    marketplace_sales = marketplace_sales.merge(to_wallets, how='inner', on='hash')
     marketplace_sales.rename(columns={
         'hash':'tx_hash',
         'to':'wallet_seller',
         'from':'wallet_buyer'
         },inplace=True)
+
+    marketplace_sales.loc[marketplace_sales['contract']==contract_addresses['treasure_marketplace_2'], 'sale_amt_magic'] = marketplace_sales.loc[marketplace_sales['contract']==contract_addresses['treasure_marketplace_2'], 'seller_amt_received_magic']
+    marketplace_sales.loc[marketplace_sales['contract']==contract_addresses['treasure_marketplace_2'], 'seller_amt_received_magic'] = marketplace_sales.loc[marketplace_sales['contract']==contract_addresses['treasure_marketplace_2'], 'sale_amt_magic'] * 0.95
+    marketplace_sales.loc[marketplace_sales['contract']==contract_addresses['treasure_marketplace_2'], 'dao_amt_received_magic'] = marketplace_sales.loc[marketplace_sales['contract']==contract_addresses['treasure_marketplace_2'], 'sale_amt_magic'] * 0.05
 
     # load into the table
     columns_to_load = [
@@ -304,7 +307,7 @@ def refresh_database(sql_credentials):
         user=sql_credentials['username'], 
         pw=sql_credentials['pw'], 
         host=sql_credentials['host'], 
-        db="treasure"
+        db="treasure_test"
         )
     )
     connection = engine.connect()
@@ -325,24 +328,25 @@ def refresh_database(sql_credentials):
     # os.remove('/tmp/tmp_marketplace_txs_df.csv')
     # os.remove('/tmp/tmp_magic_txs_df.csv')
 
-    # # write data to sql
-    # marketplace_sales_df.to_sql(
-    #     'marketplace_sales', 
-    #     con = connection, 
-    #     if_exists = 'append', 
-    #     chunksize = 1000,
-    #     index=False
-    #     )
-    # marketplace_listings_df.to_sql(
-    #     'marketplace_listings', 
-    #     con = connection, 
-    #     if_exists = 'append', 
-    #     chunksize = 1000,
-    #     index=False
-    #     )
+    # write data to sql
+    marketplace_sales_df.to_sql(
+        'marketplace_sales', 
+        con = connection, 
+        if_exists = 'append', 
+        chunksize = 1000,
+        index=False
+        )
+    marketplace_listings_df.to_sql(
+        'marketplace_listings', 
+        con = connection, 
+        if_exists = 'append', 
+        chunksize = 1000,
+        index=False
+        )
 
     connection.close()
     engine.dispose()
 
 refresh_database(mysql_credentials)
+
 
