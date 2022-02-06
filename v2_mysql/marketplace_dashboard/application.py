@@ -66,14 +66,18 @@ plot_color_palette = [
 attributes_by_collection = {
     'treasures': ['nft_subcategory'],
     'smol_brains': ['gender','body','hat','glasses','mouth','clothes', 'is_one_of_one'], 
-    'legions_genesis': ['nft_subcategory'],
+    'legacy_legions_genesis': ['nft_subcategory'],
     'smol_cars': ['background','base_color','spots','tire_color','window_color','tip_color','lights_color','door_color','wheel_color', 'is_one_of_one'],
     'life': [np.nan],
-    'smol_brain_lands': [np.nan],
+    'smol_brains_lands': [np.nan],
     'smol_bodies': ['gender','background', 'body','clothes','feet','hands','head'],
     'quest_keys': [np.nan],
-    'legions': ['nft_subcategory'],
-    'extra_life': [np.nan]
+    'legacy_legions': ['nft_subcategory'],
+    'extra_life': [np.nan],
+    'smol_brains_pets': [np.nan],
+    'smol_bodies_pets': [np.nan],
+    'legions': [np.nan],
+    'consumables': ['nft_subcategory']
 }
 
 collections = list(attributes_by_collection.keys()) + ['all']
@@ -563,5 +567,5 @@ def update_inputs(url_path):
         re.findall("(?<=timeinterval=)[a-z0-9_]+", url_path)[0]
 
 if __name__ == '__main__':
-    # app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
-    application.run(debug=False, port=8080)
+    app.run_server(debug=True, dev_tools_silence_routes_logging = False, dev_tools_props_check = False)
+    # application.run(debug=False, port=8080)

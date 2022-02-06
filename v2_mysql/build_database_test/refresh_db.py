@@ -15,6 +15,7 @@ from ratelimit import limits, sleep_and_retry
 ONE_SECOND = 1
 DAO_WALLET = '0xdb6ab450178babcf0e467c1f3b436050d907e233'
 DAO_ROYALTY_PCT = 0.05
+
 os.chdir('v2_mysql/build_database_test')
 
 tz = pytz.timezone('UTC')
@@ -32,12 +33,15 @@ with open(sql_credential) as f:
 contract_address = os.path.join("constants", "contract_addresses.json")
 method_id_address = os.path.join("constants", "marketplace_method_ids.json")
 treasure_id_address = os.path.join("constants", "treasure_token_ids.json")
+consumable_id_address = os.path.join("constants", "consumable_token_ids.json")
 with open(contract_address) as contract_address_file:
     contract_addresses = json.loads(contract_address_file.read())
 with open(method_id_address) as ids_file:
     method_ids = json.loads(ids_file.read())
 with open(treasure_id_address) as ids_file:
     treasure_ids = json.loads(ids_file.read())
+with open(consumable_id_address) as ids_file:
+    consumable_ids = json.loads(ids_file.read())
 
 contract_addresses_reverse = dict((v,k) for k,v in contract_addresses.items())
 
@@ -48,6 +52,10 @@ for key in contract_addresses_reverse.keys():
 treasure_ids_numeric = {}
 for key in treasure_ids.keys():
     treasure_ids_numeric[int(key)] = treasure_ids[key]
+
+consumable_ids_numeric = {}
+for key in consumable_ids.keys():
+    consumable_ids_numeric[int(key)] = consumable_ids[key]
 
 # Get latest transactions from s3
 s3_resource = boto3.resource('s3')
@@ -112,7 +120,7 @@ def pull_arbiscan_data(arbiscan_api_key, method_ids, start_block=0, latest_tx_ha
 
     return marketplace_txs_df, new_magic_txs_df
 
-def process_marketplace_txs(marketplace_txs_raw, method_ids, contract_addresses, treasure_ids_numeric):
+def process_marketplace_txs(marketplace_txs_raw, method_ids, contract_addresses, treasure_ids_numeric, consumable_ids_numeric):
     marketplace_txs_raw["tx_type"] = [x[:10] for x in marketplace_txs_raw["input"]]
     marketplace_txs_raw['to'] = ['0x' + x[162:212] for x in marketplace_txs_raw["input"]]
     marketplace_txs_raw["tx_type"] = marketplace_txs_raw["tx_type"].map(method_ids)
@@ -121,8 +129,10 @@ def process_marketplace_txs(marketplace_txs_raw, method_ids, contract_addresses,
     marketplace_txs_raw['gas_fee_eth'] = (marketplace_txs_raw['gasPrice'].astype('int64') * 1e-9 * marketplace_txs_raw['gasUsed'].astype(int) * 1e-9) / 2.0
     marketplace_txs_raw['nft_collection'] = [contract_addresses[x[33:74]] if x[33:74] in contract_addresses.keys() else x[33:74] for x in marketplace_txs_raw['input']] # works for both types of txs
     marketplace_txs_raw['nft_id'] = [int(x[133:138], 16) for x in marketplace_txs_raw['input']] # also works for all types of txs
-    marketplace_txs_raw.loc[marketplace_txs_raw['nft_collection'].isin(['treasures', 'legions', 'legions_genesis']), 'nft_name'] = \
-        marketplace_txs_raw.loc[marketplace_txs_raw['nft_collection'].isin(['treasures', 'legions', 'legions_genesis']), 'nft_id'].map(treasure_ids_numeric)
+    marketplace_txs_raw.loc[marketplace_txs_raw['nft_collection'].isin(['treasures', 'legacy_legions', 'legacy_legions_genesis']), 'nft_name'] = \
+        marketplace_txs_raw.loc[marketplace_txs_raw['nft_collection'].isin(['treasures', 'legacy_legions', 'legacy_legions_genesis']), 'nft_id'].map(treasure_ids_numeric)
+    marketplace_txs_raw.loc[marketplace_txs_raw['nft_collection'].isin(['consumables']), 'nft_name'] = \
+        marketplace_txs_raw.loc[marketplace_txs_raw['nft_collection'].isin(['consumables']), 'nft_id'].map(consumable_ids_numeric)
     marketplace_txs_raw.loc[~pd.isnull(marketplace_txs_raw['nft_name']),'nft_subcategory'] = \
         [re.sub(r'[0-9]+', '', x).rstrip() for x in marketplace_txs_raw.loc[~pd.isnull(marketplace_txs_raw['nft_name']),'nft_name']]
 
@@ -313,7 +323,7 @@ def refresh_database(sql_credentials):
     connection = engine.connect()
 
     marketplace_df, magic_df = pull_arbiscan_data(arbiscan_api_key, method_ids, latest_block, latest_txs)
-    marketplace_df_processed = process_marketplace_txs(marketplace_df, method_ids, contract_addresses_reverse_lower, treasure_ids_numeric)
+    marketplace_df_processed = process_marketplace_txs(marketplace_df, method_ids, contract_addresses_reverse_lower, treasure_ids_numeric, consumable_ids_numeric)
     marketplace_sales_df = build_marketplace_sales_table(marketplace_df_processed, magic_df)
     marketplace_listings_df = build_marketplace_listings_table(marketplace_df_processed, marketplace_sales_df)
 
